@@ -10,7 +10,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Association Tinka", version="9.2")
+app = FastAPI(title="API Gestion Association Tinka", version="9.3")
 
 app.add_middleware(
     CORSMiddleware,
@@ -28,12 +28,6 @@ UPLOAD_DIR = "static/uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-@app.get("/login-form/")
-@app.get("/login-form")
-def login_get_redirect():
-    return RedirectResponse(url="/", status_code=303)
-
-@app.post("/login-form/")
 @app.post("/login-form")
 def login_form(email: str = Form(...), mot_de_passe: str = Form(...)):
     try:
@@ -48,7 +42,6 @@ def login_form(email: str = Form(...), mot_de_passe: str = Form(...)):
     except Exception as e:
         return HTMLResponse(content=f"<h3>Erreur de connexion Supabase :</h3><p>{str(e)}</p><a href='/'>Retour</a>", status_code=500)
 
-@app.post("/adherents-form/")
 @app.post("/adherents-form")
 async def creer_adherent_form(
     nom: str = Form(...), prenom: str = Form(...), email: str = Form(...),
@@ -98,28 +91,28 @@ def reset_password(user_id: int = Form(...), adherent_id: int = Form(...), nouve
     supabase.table("adherents").update({"mot_de_passe": nouveau_mdp}).eq("id", adherent_id).execute()
     return HTMLResponse(content=f"<script>alert('Mot de passe réinitialisé avec succès !'); window.location.href='/dashboard?id={user_id}';</script>")
 
-@app.post("/cotisations-form/")
+@app.post("/cotisations-form")
 def ajouter_cotisation(user_id: int = Form(...), adherent_id: int = Form(...), montant: float = Form(...), periode: str = Form(...), mode_paiement: str = Form(...)):
     supabase.table("cotisations").insert({
         "adherent_id": adherent_id, "montant": montant, "periode": periode, "mode_paiement": mode_paiement
     }).execute()
     return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
 
-@app.post("/aides-form/")
+@app.post("/aides-form")
 def demander_aide(user_id: int = Form(...), motif: str = Form(...), montant_demande: float = Form(...)):
     supabase.table("aides").insert({
         "adherent_id": user_id, "motif": motif, "montant_demande": montant_demande
     }).execute()
     return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
 
-@app.post("/decaissements-form/")
+@app.post("/decaissements-form")
 def ajouter_decaissement(user_id: int = Form(...), motif: str = Form(...), montant: float = Form(...), beneficiaire: str = Form(...)):
     supabase.table("decaissements").insert({
         "motif": motif, "montant": montant, "beneficiaire": beneficiaire
     }).execute()
     return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
 
-@app.post("/projets-form/")
+@app.post("/projets-form")
 async def ajouter_projet(
     user_id: int = Form(...), titre: str = Form(...), description: str = Form(...), 
     objectifs: str = Form(...), cout: float = Form(...), file_projet: UploadFile = File(None), 
@@ -370,7 +363,7 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
 
             <div class="card">
                 <h2>Enregistrer une Cotisation</h2>
-                <form action="/cotisations-form/" method="POST">
+                <form action="/cotisations-form" method="POST">
                     <input type="hidden" name="user_id" value="{user['id']}">
                     <div class="form-group"><label>Adhérent :</label><select name="adherent_id" required><option value="">-- Choisir --</option>{options_adherents}</select></div>
                     <div class="form-group"><label>Montant (CFA) :</label><input type="number" name="montant" required></div>
@@ -383,7 +376,7 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
             {f'''
             <div class="card">
                 <h2>Ajouter un Projet au Bureau (Planification)</h2>
-                <form action="/projets-form/" method="POST" enctype="multipart/form-data">
+                <form action="/projets-form" method="POST" enctype="multipart/form-data">
                     <input type="hidden" name="user_id" value="{user['id']}">
                     <div class="form-group"><label>Titre :</label><input type="text" name="titre" required></div>
                     <div class="form-group"><label>Description :</label><textarea name="description" rows="2"></textarea></div>
@@ -418,7 +411,7 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                 <ul>{aides_membre_html or '<li>Aucune demande soumise.</li>'}</ul>
                 <hr style="border:0; border-top:1px solid #eee; margin:15px 0;">
                 <h3 style="font-size:1rem; color:#2980b9;">Faire une nouvelle demande d'aide</h3>
-                <form action="/aides-form/" method="POST">
+                <form action="/aides-form" method="POST">
                     <input type="hidden" name="user_id" value="{user['id']}">
                     <div class="form-group"><label>Motif :</label><input type="text" name="motif" required></div>
                     <div class="form-group"><label>Montant demandé (CFA) :</label><input type="number" name="montant_demande" required></div>
