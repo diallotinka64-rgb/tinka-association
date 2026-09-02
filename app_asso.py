@@ -10,7 +10,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Association Tinka", version="9.1")
+app = FastAPI(title="API Gestion Association Tinka", version="9.2")
 
 app.add_middleware(
     CORSMiddleware,
@@ -28,7 +28,13 @@ UPLOAD_DIR = "static/uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+@app.get("/login-form/")
+@app.get("/login-form")
+def login_get_redirect():
+    return RedirectResponse(url="/", status_code=303)
+
 @app.post("/login-form/")
+@app.post("/login-form")
 def login_form(email: str = Form(...), mot_de_passe: str = Form(...)):
     try:
         res = supabase.table("adherents").select("*").eq("email", email).eq("mot_de_passe", mot_de_passe).execute()
@@ -43,6 +49,7 @@ def login_form(email: str = Form(...), mot_de_passe: str = Form(...)):
         return HTMLResponse(content=f"<h3>Erreur de connexion Supabase :</h3><p>{str(e)}</p><a href='/'>Retour</a>", status_code=500)
 
 @app.post("/adherents-form/")
+@app.post("/adherents-form")
 async def creer_adherent_form(
     nom: str = Form(...), prenom: str = Form(...), email: str = Form(...),
     telephone: str = Form(...), adresse: str = Form(...), secteur: str = Form(...),
@@ -209,7 +216,7 @@ def afficher_portail():
             <h1>Association Tinka - Portail</h1>
             <div class="card">
                 <h2>Connexion</h2>
-                <form action="/login-form/" method="POST">
+                <form action="/login-form" method="POST">
                     <div class="form-group"><label>Email :</label><input type="email" name="email" required></div>
                     <div class="form-group"><label>Mot de passe :</label><input type="password" name="mot_de_passe" required></div>
                     <button type="submit" style="background-color: var(--info);">Se connecter</button>
@@ -217,7 +224,7 @@ def afficher_portail():
             </div>
             <div class="card">
                 <h2>Inscription d'un Nouvel Adhérent</h2>
-                <form action="/adherents-form/" method="POST" enctype="multipart/form-data">
+                <form action="/adherents-form" method="POST" enctype="multipart/form-data">
                     <div class="form-group"><label>Nom :</label><input type="text" name="nom" required></div>
                     <div class="form-group"><label>Prénom :</label><input type="text" name="prenom" required></div>
                     <div class="form-group"><label>Email :</label><input type="email" name="email" required></div>
