@@ -10,7 +10,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Association Tinka", version="9.3")
+app = FastAPI(title="API Gestion Association Tinka", version="9.4")
 
 app.add_middleware(
     CORSMiddleware,
