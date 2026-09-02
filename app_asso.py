@@ -10,7 +10,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Association Tinka", version="9.4")
+app = FastAPI(title="API Gestion Association Tinka", version="9.5")
 
 app.add_middleware(
     CORSMiddleware,
@@ -28,6 +28,13 @@ UPLOAD_DIR = "static/uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+# Redirections de secours pour éviter toute erreur 405 Method Not Allowed
+@app.get("/login-form", include_in_schema=False)
+@app.get("/login-form/", include_in_schema=False)
+def login_get_redirect():
+    return RedirectResponse(url="/", status_code=303)
+
+@app.post("/login-form/")
 @app.post("/login-form")
 def login_form(email: str = Form(...), mot_de_passe: str = Form(...)):
     try:
@@ -42,6 +49,7 @@ def login_form(email: str = Form(...), mot_de_passe: str = Form(...)):
     except Exception as e:
         return HTMLResponse(content=f"<h3>Erreur de connexion Supabase :</h3><p>{str(e)}</p><a href='/'>Retour</a>", status_code=500)
 
+@app.post("/adherents-form/")
 @app.post("/adherents-form")
 async def creer_adherent_form(
     nom: str = Form(...), prenom: str = Form(...), email: str = Form(...),
@@ -91,6 +99,7 @@ def reset_password(user_id: int = Form(...), adherent_id: int = Form(...), nouve
     supabase.table("adherents").update({"mot_de_passe": nouveau_mdp}).eq("id", adherent_id).execute()
     return HTMLResponse(content=f"<script>alert('Mot de passe réinitialisé avec succès !'); window.location.href='/dashboard?id={user_id}';</script>")
 
+@app.post("/cotisations-form/")
 @app.post("/cotisations-form")
 def ajouter_cotisation(user_id: int = Form(...), adherent_id: int = Form(...), montant: float = Form(...), periode: str = Form(...), mode_paiement: str = Form(...)):
     supabase.table("cotisations").insert({
@@ -98,6 +107,7 @@ def ajouter_cotisation(user_id: int = Form(...), adherent_id: int = Form(...), m
     }).execute()
     return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
 
+@app.post("/aides-form/")
 @app.post("/aides-form")
 def demander_aide(user_id: int = Form(...), motif: str = Form(...), montant_demande: float = Form(...)):
     supabase.table("aides").insert({
@@ -105,6 +115,7 @@ def demander_aide(user_id: int = Form(...), motif: str = Form(...), montant_dema
     }).execute()
     return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
 
+@app.post("/decaissements-form/")
 @app.post("/decaissements-form")
 def ajouter_decaissement(user_id: int = Form(...), motif: str = Form(...), montant: float = Form(...), beneficiaire: str = Form(...)):
     supabase.table("decaissements").insert({
@@ -112,6 +123,7 @@ def ajouter_decaissement(user_id: int = Form(...), motif: str = Form(...), monta
     }).execute()
     return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
 
+@app.post("/projets-form/")
 @app.post("/projets-form")
 async def ajouter_projet(
     user_id: int = Form(...), titre: str = Form(...), description: str = Form(...), 
