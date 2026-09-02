@@ -8,7 +8,7 @@ from typing import Optional
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 
-app = FastAPI(title="API Gestion Association Tinka", version="7.5")
+app = FastAPI(title="API Gestion Association Tinka", version="7.8")
 
 app.add_middleware(
     CORSMiddleware,
@@ -19,7 +19,6 @@ app.add_middleware(
 )
 
 DB_NAME = "association.db"
-LOGO_URL = "https://i.imgur.com/7D226zp.png" # Exemple ou logo par défaut de l'association
 
 def get_db():
     conn = sqlite3.connect(DB_NAME)
@@ -106,7 +105,6 @@ def init_db():
 
 init_db()
 
-# --- ROUTES FORMULAIRES ---
 @app.post("/login-form/")
 def login_form(email: str = Form(...), mot_de_passe: str = Form(...), db: sqlite3.Connection = Depends(get_db)):
     cursor = db.cursor()
@@ -136,6 +134,13 @@ def creer_adherent_form(
     except sqlite3.IntegrityError:
         return HTMLResponse(content="<script>alert('Cet email est déjà utilisé.'); window.location.href='/';</script>")
 
+@app.post("/modifier-photo")
+def modifier_photo(user_id: int = Form(...), photo_profil: str = Form(...), db: sqlite3.Connection = Depends(get_db)):
+    cursor = db.cursor()
+    cursor.execute("UPDATE adherents SET photo_profil = ? WHERE id = ?", (photo_profil, user_id))
+    db.commit()
+    return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
+
 @app.post("/admin/valider-adherent")
 def valider_adherent(user_id: int = Form(...), adherent_id: int = Form(...), db: sqlite3.Connection = Depends(get_db)):
     cursor = db.cursor()
@@ -147,20 +152,6 @@ def valider_adherent(user_id: int = Form(...), adherent_id: int = Form(...), db:
 def changer_role(user_id: int = Form(...), adherent_id: int = Form(...), nouveau_role: str = Form(...), db: sqlite3.Connection = Depends(get_db)):
     cursor = db.cursor()
     cursor.execute("UPDATE adherents SET role = ? WHERE id = ?", (nouveau_role, adherent_id))
-    db.commit()
-    return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
-
-@app.post("/admin/reset-password")
-def reset_password(user_id: int = Form(...), adherent_id: int = Form(...), nouveau_mdp: str = Form(...), db: sqlite3.Connection = Depends(get_db)):
-    cursor = db.cursor()
-    cursor.execute("UPDATE adherents SET mot_de_passe = ? WHERE id = ?", (nouveau_mdp, adherent_id))
-    db.commit()
-    return HTMLResponse(content=f"<script>alert('Mot de passe mis à jour !'); window.location.href='/dashboard?id={user_id}';</script>")
-
-@app.post("/admin/statuer-aide")
-def statuer_aide(user_id: int = Form(...), aide_id: int = Form(...), statut_aide: str = Form(...), db: sqlite3.Connection = Depends(get_db)):
-    cursor = db.cursor()
-    cursor.execute("UPDATE aides SET statut_validation = ? WHERE id = ?", (statut_aide, aide_id))
     db.commit()
     return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
 
@@ -207,17 +198,16 @@ def export_cotisations_pdf(periode: Optional[str] = Query(None), db: sqlite3.Con
     p = canvas.Canvas(buffer, pagesize=letter)
     width, height = letter
 
-    # En-tête avec Logo (simulé par texte stylisé ou insertion)
+    # En-tête avec Logo de l'association
     p.setFont("Helvetica-Bold", 14)
     p.setFillColorRGB(0.15, 0.25, 0.35)
     p.drawString(50, height - 40, "ASSOCIATION TINKA")
     p.setFont("Helvetica", 9)
     p.setFillColorRGB(0.4, 0.4, 0.4)
-    p.drawString(50, height - 55, "Gestion & Suivi Financier des Membres")
+    p.drawString(50, height - 55, "Bureau Exécutif & Conseil - Rapport Officiel")
     p.setStrokeColorRGB(0.8, 0.8, 0.8)
     p.line(50, height - 65, width - 50, height - 65)
 
-    # Titre du document
     p.setFont("Helvetica-Bold", 13)
     p.setFillColorRGB(0, 0, 0)
     p.drawString(50, height - 95, titre_rapport)
@@ -264,10 +254,7 @@ def afficher_portail():
     </head>
     <body>
         <div class="container">
-            <h1 style="display:flex; align-items:center; justify-content:center; gap:15px;">
-                <span style="background:#2c3e50; color:white; padding:8px 15px; border-radius:6px; font-size:1rem;">TINKA</span> 
-                Portail Association
-            </h1>
+            <h1>Association Tinka - Portail</h1>
             <div class="card">
                 <h2>Connexion</h2>
                 <form action="/login-form/" method="POST">
@@ -318,11 +305,7 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None), db:
     cursor.execute("SELECT c.*, a.nom, a.prenom, a.secteur, a.telephone FROM cotisations c JOIN adherents a ON c.adherent_id = a.id")
     all_cotisations = cursor.fetchall()
 
-    # Application du filtre par période si sélectionné
-    if filtre_periode:
-        cotis_affichees = [c for c in all_cotisations if c['periode'] == filtre_periode]
-    else:
-        cotis_affichees = all_cotisations
+    cotis_affichees = [c for c in all_cotisations if c['periode'] == filtre_periode] if filtre_periode else all_cotisations
 
     cursor.execute("SELECT ai.*, a.nom, a.prenom, a.secteur FROM aides ai JOIN adherents a ON ai.adherent_id = a.id")
     all_aides = cursor.fetchall()
@@ -349,11 +332,7 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None), db:
             statut_ajour = "<span style='color: #27ae60; font-weight:bold;'>À jour</span>" if not mois_manquants else f"<span style='color: #c0392b;'>Retard ({len(mois_manquants)} mois)</span>"
             suivi_retards_html += f"<li><b>{a['prenom']} {a['nom']}</b> (Secteur: {a['secteur']} | Tél: {a['telephone']}) : {statut_ajour}</li>"
 
-        # Affichage du tableau des cotisations filtrées
-        cotis_table_html = ""
-        for c in cotis_affichees:
-            cotis_table_html += f"<tr><td>{c['prenom']} {c['nom']}</td><td>{c['secteur']}</td><td><b>{c['montant']} CFA</b></td><td>{c['periode']}</td><td>{c['mode_paiement']}</td></tr>"
-
+        cotis_table_html = "".join([f"<tr><td>{c['prenom']} {c['nom']}</td><td>{c['secteur']}</td><td><b>{c['montant']} CFA</b></td><td>{c['periode']}</td><td>{c['mode_paiement']}</td></tr>" for c in cotis_affichees])
         options_filtre_mois = "".join([f"<option value='{m}' {'selected' if filtre_periode==m else ''}>{m}</option>" for m in mois_12])
 
         adherents_gestion_html = ""
@@ -378,23 +357,6 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None), db:
             
             photo_tag = f"<img src='{a['photo_profil']}' style='width:30px; height:30px; border-radius:50%; object-fit:cover; vertical-align:middle; margin-right:8px;' onerror='this.style.display=\"none\"'>" if a['photo_profil'] else ""
             adherents_gestion_html += f"<li>{photo_tag}<b>{a['prenom']} {a['nom']}</b> — <em>{a['secteur']}</em> (Tél: {a['telephone']}) [Statut: <b>{a['statut']}</b> | Rôle: {a['role']}] {actions}</li>"
-
-        aides_admin_html = ""
-        for ai in all_aides:
-            v_actions = ""
-            if ai['statut_validation'] == 'en_attente' and is_admin:
-                v_actions = f"""
-                <form action="/admin/statuer-aide" method="POST" style="display:inline; margin-left:5px;">
-                    <input type="hidden" name="user_id" value="{user['id']}"><input type="hidden" name="aide_id" value="{ai['id']}"><input type="hidden" name="statut_aide" value="approuve">
-                    <button type="submit" style="background:#27ae60; padding:2px 6px; font-size:0.75rem; width:auto;">Approuver</button>
-                </form>
-                <form action="/admin/statuer-aide" method="POST" style="display:inline; margin-left:5px;">
-                    <input type="hidden" name="user_id" value="{user['id']}"><input type="hidden" name="aide_id" value="{ai['id']}"><input type="hidden" name="statut_aide" value="rejete">
-                    <button type="submit" style="background:#c0392b; padding:2px 6px; font-size:0.75rem; width:auto;">Rejeter</button>
-                </form>"""
-            aides_admin_html += f"<li><b>{ai['prenom']} {ai['nom']}</b> ({ai['secteur']}) - {ai['motif']} : <b>{ai['montant_demande']} CFA</b> [{ai['statut_validation']}] {v_actions}</li>"
-
-        decaissements_html = "".join([f"<li>{d['motif']} — <b>{d['montant']} CFA</b> (Bénéficiaire: {d['beneficiaire']})</li>" for d in all_decaissements])
 
         finance_sections_html = f"""
         <div class="card">
@@ -441,11 +403,6 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None), db:
         </div>
 
         <div class="card">
-            <h2>Demandes d'Aide des Membres</h2>
-            <ul>{aides_admin_html or '<li>Aucune demande.</li>'}</ul>
-        </div>
-
-        <div class="card">
             <h2>Enregistrer une Cotisation</h2>
             <form action="/cotisations-form/" method="POST">
                 <input type="hidden" name="user_id" value="{user['id']}">
@@ -457,22 +414,9 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None), db:
             </form>
         </div>
 
-        <div class="card">
-            <h2>Enregistrer un Décaissement (Dépense)</h2>
-            <ul>{decaissements_html or '<li>Aucun décaissement.</li>'}</ul>
-            <hr style="border:0; border-top:1px solid #eee; margin:15px 0;">
-            <form action="/decaissements-form/" method="POST">
-                <input type="hidden" name="user_id" value="{user['id']}">
-                <div class="form-group"><label>Motif :</label><input type="text" name="motif" required></div>
-                <div class="form-group"><label>Montant :</label><input type="number" name="montant" required></div>
-                <div class="form-group"><label>Bénéficiaire :</label><input type="text" name="beneficiaire" required></div>
-                <button type="submit" style="background-color: #c0392b;">Enregistrer la dépense</button>
-            </form>
-        </div>
-
         {f'''
         <div class="card">
-            <h2>Ajouter un Projet à l'Association</h2>
+            <h2>Ajouter un Projet au Bureau (Planification)</h2>
             <form action="/projets-form/" method="POST">
                 <input type="hidden" name="user_id" value="{user['id']}">
                 <div class="form-group"><label>Titre :</label><input type="text" name="titre" required></div>
@@ -544,14 +488,12 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None), db:
             h1 {{ color: var(--primary); text-align: center; }}
             .card {{ background: #fff; border: 1px solid #e1e8ed; padding: 20px; border-radius: 8px; margin-bottom: 20px; }}
             .card h2 {{ margin-top: 0; color: var(--accent); font-size: 1.2rem; border-bottom: 2px solid #f1f1f1; padding-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }}
-            .dashboard-box {{ display: flex; justify-content: space-around; background: #e8f8f5; padding: 15px; border-radius: 6px; text-align: center; margin-bottom: 15px; font-weight: bold; font-size: 1.1rem; color: #16a085; }}
             .form-group {{ margin-bottom: 12px; }}
             label {{ display: block; margin-bottom: 4px; font-weight: 600; font-size: 0.9rem; }}
             input, select, textarea {{ width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; }}
             button {{ background-color: var(--accent); color: white; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; font-size: 1rem; width: 100%; font-weight: bold; }}
             button:hover {{ background-color: #219653; }}
             .btn-danger {{ background-color: var(--danger); color: white; padding: 8px 15px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block; }}
-            .btn-pdf {{ background-color: var(--pdf); color: white; padding: 5px 10px; text-decoration: none; border-radius: 4px; font-size: 0.85rem; }}
             ul {{ padding-left: 20px; }}
             li {{ margin-bottom: 8px; font-size: 0.9rem; }}
             table th, table td {{ border-bottom: 1px solid #eee; padding: 8px; text-align: left; }}
@@ -567,7 +509,20 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None), db:
                 <p><b>Nom & Prénom :</b> {user['prenom']} {user['nom']}</p>
                 <p><b>Secteur :</b> {user['secteur']} | <b>Téléphone :</b> {user['telephone']} | <b>Email :</b> {user['email']}</p>
                 <p><b>Rôle :</b> <span style="text-transform: uppercase; color: #2980b9; font-weight: bold;">{user['role']}</span></p>
-                <a href="/" class="btn-danger">Se déconnecter</a>
+                
+                <hr style="border:0; border-top:1px solid #d0e1f9; margin:10px 0;">
+                <form action="/modifier-photo" method="POST" style="display:flex; gap:10px; align-items:flex-end;">
+                    <input type="hidden" name="user_id" value="{user['id']}">
+                    <div style="flex:1;" class="form-group">
+                        <label style="font-size:0.8rem;">Modifier/Ajouter ma photo (URL) :</label>
+                        <input type="url" name="photo_profil" value="{user['photo_profil']}" placeholder="https://..." required style="padding:5px; font-size:0.85rem;">
+                    </div>
+                    <div>
+                        <button type="submit" style="background:#2980b9; padding:6px 12px; font-size:0.85rem; width:auto;">Mettre à jour</button>
+                    </div>
+                </form>
+                <br>
+                <a href="/" class="btn-danger" style="font-size:0.85rem; padding:6px 12px;">Se déconnecter</a>
             </div>
 
             {finance_sections_html}
@@ -575,9 +530,7 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None), db:
             {member_sections_html}
 
             <div class="card">
-                <h2>
-                    Projets de l'Association
-                </h2>
+                <h2>Projets de l'Association & Bureau</h2>
                 <div>{projets_html or '<p>Aucun projet enregistré.</p>'}</div>
             </div>
         </div>
