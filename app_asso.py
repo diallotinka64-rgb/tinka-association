@@ -1,14 +1,14 @@
-from fastapi import FastAPI, HTTPException, Depends, Form, status
+from fastapi import FastAPI, HTTPException, Depends, Form, status, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, StreamingResponse, RedirectResponse
 import sqlite3
 import io
-import uvicorn
+import datetime
 from typing import Optional
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 
-app = FastAPI(title="API Gestion Association Tinka", version="6.9")
+app = FastAPI(title="API Gestion Association Tinka", version="7.5")
 
 app.add_middleware(
     CORSMiddleware,
@@ -19,6 +19,7 @@ app.add_middleware(
 )
 
 DB_NAME = "association.db"
+LOGO_URL = "https://i.imgur.com/7D226zp.png" # Exemple ou logo par défaut de l'association
 
 def get_db():
     conn = sqlite3.connect(DB_NAME)
@@ -40,6 +41,7 @@ def init_db():
         telephone TEXT,
         adresse TEXT,
         secteur TEXT,
+        photo_profil TEXT DEFAULT '',
         mot_de_passe TEXT NOT NULL,
         role TEXT CHECK(role IN ('admin', 'tresorier', 'membre')) DEFAULT 'membre',
         statut TEXT CHECK(statut IN ('en_attente', 'actif', 'inactif')) DEFAULT 'en_attente',
@@ -94,6 +96,7 @@ def init_db():
         description TEXT,
         objectifs TEXT,
         cout REAL,
+        photo_projet TEXT DEFAULT '',
         chronologie TEXT CHECK(chronologie IN ('passe', 'actuel', 'avenir')) DEFAULT 'actuel',
         statut TEXT CHECK(statut IN ('planifie', 'en_cours', 'termine')) DEFAULT 'planifie'
     )
@@ -112,21 +115,21 @@ def login_form(email: str = Form(...), mot_de_passe: str = Form(...), db: sqlite
     if not user:
         return HTMLResponse(content="<script>alert('Email ou mot de passe incorrect.'); window.location.href='/';</script>", status_code=401)
     if user['statut'] != 'actif':
-        return HTMLResponse(content="<script>alert('Votre compte est en attente de validation par l\\'administrateur.'); window.location.href='/';</script>", status_code=403)
+        return HTMLResponse(content="<script>alert('Votre compte est en attente de validation.'); window.location.href='/';</script>", status_code=403)
     return RedirectResponse(url=f"/dashboard?id={user['id']}", status_code=status.HTTP_303_SEE_OTHER)
 
 @app.post("/adherents-form/")
 def creer_adherent_form(
     nom: str = Form(...), prenom: str = Form(...), email: str = Form(...),
     telephone: str = Form(...), adresse: str = Form(...), secteur: str = Form(...),
-    mot_de_passe: str = Form(...), db: sqlite3.Connection = Depends(get_db)
+    photo_profil: Optional[str] = Form(""), mot_de_passe: str = Form(...), db: sqlite3.Connection = Depends(get_db)
 ):
     cursor = db.cursor()
     try:
         cursor.execute(
-            """INSERT INTO adherents (nom, prenom, email, telephone, adresse, secteur, mot_de_passe) 
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (nom, prenom, email, telephone, adresse, secteur, mot_de_passe)
+            """INSERT INTO adherents (nom, prenom, email, telephone, adresse, secteur, photo_profil, mot_de_passe) 
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (nom, prenom, email, telephone, adresse, secteur, photo_profil, mot_de_passe)
         )
         db.commit()
         return HTMLResponse(content="<script>alert('Compte créé avec succès ! En attente de validation.'); window.location.href='/';</script>")
@@ -140,12 +143,19 @@ def valider_adherent(user_id: int = Form(...), adherent_id: int = Form(...), db:
     db.commit()
     return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
 
+@app.post("/admin/changer-role")
+def changer_role(user_id: int = Form(...), adherent_id: int = Form(...), nouveau_role: str = Form(...), db: sqlite3.Connection = Depends(get_db)):
+    cursor = db.cursor()
+    cursor.execute("UPDATE adherents SET role = ? WHERE id = ?", (nouveau_role, adherent_id))
+    db.commit()
+    return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
+
 @app.post("/admin/reset-password")
 def reset_password(user_id: int = Form(...), adherent_id: int = Form(...), nouveau_mdp: str = Form(...), db: sqlite3.Connection = Depends(get_db)):
     cursor = db.cursor()
     cursor.execute("UPDATE adherents SET mot_de_passe = ? WHERE id = ?", (nouveau_mdp, adherent_id))
     db.commit()
-    return HTMLResponse(content=f"<script>alert('Mot de passe réinitialisé avec succès !'); window.location.href='/dashboard?id={user_id}';</script>")
+    return HTMLResponse(content=f"<script>alert('Mot de passe mis à jour !'); window.location.href='/dashboard?id={user_id}';</script>")
 
 @app.post("/admin/statuer-aide")
 def statuer_aide(user_id: int = Form(...), aide_id: int = Form(...), statut_aide: str = Form(...), db: sqlite3.Connection = Depends(get_db)):
@@ -176,33 +186,58 @@ def ajouter_decaissement(user_id: int = Form(...), motif: str = Form(...), monta
     return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
 
 @app.post("/projets-form/")
-def ajouter_projet(user_id: int = Form(...), titre: str = Form(...), description: str = Form(...), objectifs: str = Form(...), cout: float = Form(...), chronologie: str = Form(...), statut: str = Form(...), db: sqlite3.Connection = Depends(get_db)):
+def ajouter_projet(user_id: int = Form(...), titre: str = Form(...), description: str = Form(...), objectifs: str = Form(...), cout: float = Form(...), photo_projet: str = Form(""), chronologie: str = Form(...), statut: str = Form(...), db: sqlite3.Connection = Depends(get_db)):
     cursor = db.cursor()
-    cursor.execute("INSERT INTO projets (titre, description, objectifs, cout, chronologie, statut) VALUES (?, ?, ?, ?, ?, ?)", (titre, description, objectifs, cout, chronologie, statut))
+    cursor.execute("INSERT INTO projets (titre, description, objectifs, cout, photo_projet, chronologie, statut) VALUES (?, ?, ?, ?, ?, ?, ?)", (titre, description, objectifs, cout, photo_projet, chronologie, statut))
     db.commit()
     return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
 
 @app.get("/cotisations/export-pdf")
-def export_cotisations_pdf(db: sqlite3.Connection = Depends(get_db)):
+def export_cotisations_pdf(periode: Optional[str] = Query(None), db: sqlite3.Connection = Depends(get_db)):
     cursor = db.cursor()
-    cursor.execute("SELECT c.*, a.nom, a.prenom FROM cotisations c JOIN adherents a ON c.adherent_id = a.id")
+    if periode:
+        cursor.execute("SELECT c.*, a.nom, a.prenom, a.secteur FROM cotisations c JOIN adherents a ON c.adherent_id = a.id WHERE c.periode = ?", (periode,))
+        titre_rapport = f"Association Tinka - Rapport des Cotisations ({periode})"
+    else:
+        cursor.execute("SELECT c.*, a.nom, a.prenom, a.secteur FROM cotisations c JOIN adherents a ON c.adherent_id = a.id")
+        titre_rapport = "Association Tinka - Rapport Global des Cotisations"
+
     cotis = cursor.fetchall()
     buffer = io.BytesIO()
     p = canvas.Canvas(buffer, pagesize=letter)
     width, height = letter
-    p.setFont("Helvetica-Bold", 16)
-    p.drawString(50, height - 50, "Association Tinka - Rapport des Cotisations")
+
+    # En-tête avec Logo (simulé par texte stylisé ou insertion)
+    p.setFont("Helvetica-Bold", 14)
+    p.setFillColorRGB(0.15, 0.25, 0.35)
+    p.drawString(50, height - 40, "ASSOCIATION TINKA")
+    p.setFont("Helvetica", 9)
+    p.setFillColorRGB(0.4, 0.4, 0.4)
+    p.drawString(50, height - 55, "Gestion & Suivi Financier des Membres")
+    p.setStrokeColorRGB(0.8, 0.8, 0.8)
+    p.line(50, height - 65, width - 50, height - 65)
+
+    # Titre du document
+    p.setFont("Helvetica-Bold", 13)
+    p.setFillColorRGB(0, 0, 0)
+    p.drawString(50, height - 95, titre_rapport)
+
     p.setFont("Helvetica", 10)
-    y = height - 100
+    y = height - 130
     total = 0
     for c in cotis:
-        p.drawString(50, y, f"{c['prenom']} {c['nom']} - {c['periode']} : {c['montant']} CFA ({c['mode_paiement']})")
+        p.drawString(50, y, f"- {c['prenom']} {c['nom']} ({c['secteur']}) | Période: {c['periode']} | Montant: {c['montant']} CFA ({c['mode_paiement']})")
         total += c['montant']
         y -= 20
+        if y < 50:
+            p.showPage()
+            y = height - 50
+
+    p.setFont("Helvetica-Bold", 11)
     p.drawString(50, y - 10, f"Total Général : {total} CFA")
     p.save()
     buffer.seek(0)
-    return StreamingResponse(buffer, media_type="application/pdf", headers={"Content-Disposition": "attachment; filename=rapport_cotisations.pdf"})
+    return StreamingResponse(buffer, media_type="application/pdf", headers={"Content-Disposition": f"attachment; filename=rapport_cotisations_{periode or 'global'}.pdf"})
 
 @app.get("/", response_class=HTMLResponse)
 def afficher_portail():
@@ -229,7 +264,10 @@ def afficher_portail():
     </head>
     <body>
         <div class="container">
-            <h1>Association Tinka - Portail</h1>
+            <h1 style="display:flex; align-items:center; justify-content:center; gap:15px;">
+                <span style="background:#2c3e50; color:white; padding:8px 15px; border-radius:6px; font-size:1rem;">TINKA</span> 
+                Portail Association
+            </h1>
             <div class="card">
                 <h2>Connexion</h2>
                 <form action="/login-form/" method="POST">
@@ -247,6 +285,7 @@ def afficher_portail():
                     <div class="form-group"><label>Téléphone :</label><input type="text" name="telephone" required></div>
                     <div class="form-group"><label>Adresse :</label><input type="text" name="adresse" required></div>
                     <div class="form-group"><label>Secteur :</label><input type="text" name="secteur" required></div>
+                    <div class="form-group"><label>URL de votre Photo de profil :</label><input type="url" name="photo_profil" placeholder="https://exemple.com/photo.jpg"></div>
                     <div class="form-group"><label>Mot de passe :</label><input type="password" name="mot_de_passe" required></div>
                     <button type="submit">S'inscrire</button>
                 </form>
@@ -257,125 +296,164 @@ def afficher_portail():
     """
 
 @app.get("/dashboard", response_class=HTMLResponse)
-def afficher_dashboard(id: int, db: sqlite3.Connection = Depends(get_db)):
+def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None), db: sqlite3.Connection = Depends(get_db)):
     cursor = db.cursor()
     cursor.execute("SELECT * FROM adherents WHERE id = ?", (id,))
     user = cursor.fetchone()
     if not user:
         return RedirectResponse(url="/", status_code=303)
 
-    is_admin = user['role'] in ['admin', 'tresorier']
+    is_admin = user['role'] == 'admin'
+    is_tresorier = user['role'] in ['admin', 'tresorier']
 
-    # Données globales ou personnelles selon le rôle
-    if is_admin:
-        cursor.execute("SELECT SUM(montant) as total FROM cotisations")
-        cotis = cursor.fetchone()['total'] or 0.0
-        cursor.execute("SELECT SUM(montant_demande) as total FROM aides WHERE statut_validation = 'approuve'")
-        aides_versees = cursor.fetchone()['total'] or 0.0
-        cursor.execute("SELECT SUM(montant) as total FROM decaissements")
-        decs = cursor.fetchone()['total'] or 0.0
-        solde = cotis - (aides_versees + decs)
+    annee_courante = datetime.datetime.now().year
+    mois_12 = [f"{annee_courante}-{m:02d}" for m in range(1, 13)]
 
-        cursor.execute("SELECT * FROM adherents")
-        all_adherents = cursor.fetchall()
+    cursor.execute("SELECT * FROM adherents WHERE statut = 'actif'")
+    all_actifs = cursor.fetchall()
 
-        cursor.execute("SELECT c.*, a.nom, a.prenom FROM cotisations c JOIN adherents a ON c.adherent_id = a.id")
-        all_cotisations = cursor.fetchall()
+    cursor.execute("SELECT * FROM adherents")
+    all_adherents = cursor.fetchall()
 
-        cursor.execute("SELECT ai.*, a.nom, a.prenom FROM aides ai JOIN adherents a ON ai.adherent_id = a.id")
-        all_aides = cursor.fetchall()
+    cursor.execute("SELECT c.*, a.nom, a.prenom, a.secteur, a.telephone FROM cotisations c JOIN adherents a ON c.adherent_id = a.id")
+    all_cotisations = cursor.fetchall()
 
-        cursor.execute("SELECT * FROM decaissements")
-        all_decaissements = cursor.fetchall()
+    # Application du filtre par période si sélectionné
+    if filtre_periode:
+        cotis_affichees = [c for c in all_cotisations if c['periode'] == filtre_periode]
     else:
-        # Données spécifiques au membre connecté
-        cursor.execute("SELECT SUM(montant) as total FROM cotisations WHERE adherent_id = ?", (user['id'],))
-        cotis = cursor.fetchone()['total'] or 0.0
+        cotis_affichees = all_cotisations
 
-        cursor.execute("SELECT * FROM cotisations WHERE adherent_id = ?", (user['id'],))
-        all_cotisations = cursor.fetchall()
+    cursor.execute("SELECT ai.*, a.nom, a.prenom, a.secteur FROM aides ai JOIN adherents a ON ai.adherent_id = a.id")
+    all_aides = cursor.fetchall()
 
-        cursor.execute("SELECT ai.*, a.nom, a.prenom FROM aides ai JOIN adherents a ON ai.adherent_id = a.id WHERE ai.adherent_id = ?", (user['id'],))
-        all_aides = cursor.fetchall()
+    cursor.execute("SELECT * FROM decaissements")
+    all_decaissements = cursor.fetchall()
 
     cursor.execute("SELECT * FROM projets")
     all_projets = cursor.fetchall()
 
-    # --- HTML SECTION ADMIN ---
-    admin_sections_html = ""
-    if is_admin:
-        options_adherents = "".join([f"<option value='{a['id']}'>{a['prenom']} {a['nom']} ({a['secteur']})</option>" for a in all_adherents if a['statut'] == 'actif' and a['role'] != 'admin'])
+    total_cotis = sum([c['montant'] for c in all_cotisations])
+    total_aides_approuvees = sum([ai['montant_demande'] for ai in all_aides if ai['statut_validation'] == 'approuve'])
+    total_dec = sum([d['montant'] for d in all_decaissements])
+    solde = total_cotis - (total_aides_approuvees + total_dec)
+
+    finance_sections_html = ""
+    if is_tresorier:
+        options_adherents = "".join([f"<option value='{a['id']}'>{a['prenom']} {a['nom']} — Secteur: {a['secteur']} (Tél: {a['telephone']})</option>" for a in all_actifs if a['role'] != 'admin'])
         
-        adherents_html = ""
+        suivi_retards_html = ""
+        for a in all_actifs:
+            cotis_membre = [c['periode'] for c in all_cotisations if c['adherent_id'] == a['id']]
+            mois_manquants = [m for m in mois_12 if m not in cotis_membre]
+            statut_ajour = "<span style='color: #27ae60; font-weight:bold;'>À jour</span>" if not mois_manquants else f"<span style='color: #c0392b;'>Retard ({len(mois_manquants)} mois)</span>"
+            suivi_retards_html += f"<li><b>{a['prenom']} {a['nom']}</b> (Secteur: {a['secteur']} | Tél: {a['telephone']}) : {statut_ajour}</li>"
+
+        # Affichage du tableau des cotisations filtrées
+        cotis_table_html = ""
+        for c in cotis_affichees:
+            cotis_table_html += f"<tr><td>{c['prenom']} {c['nom']}</td><td>{c['secteur']}</td><td><b>{c['montant']} CFA</b></td><td>{c['periode']}</td><td>{c['mode_paiement']}</td></tr>"
+
+        options_filtre_mois = "".join([f"<option value='{m}' {'selected' if filtre_periode==m else ''}>{m}</option>" for m in mois_12])
+
+        adherents_gestion_html = ""
         for a in all_adherents:
-            actions_admin = ""
+            actions = ""
             if a['statut'] == 'en_attente':
-                actions_admin += f"""
-                <form action="/admin/valider-adherent" method="POST" style="display:inline; margin-left: 5px;">
-                    <input type="hidden" name="user_id" value="{user['id']}">
-                    <input type="hidden" name="adherent_id" value="{a['id']}">
-                    <button type="submit" style="background:#27ae60; padding:2px 8px; font-size:0.8rem; width:auto;">Valider</button>
+                actions += f"""
+                <form action="/admin/valider-adherent" method="POST" style="display:inline; margin-left:5px;">
+                    <input type="hidden" name="user_id" value="{user['id']}"><input type="hidden" name="adherent_id" value="{a['id']}">
+                    <button type="submit" style="background:#27ae60; padding:2px 8px; font-size:0.75rem; width:auto;">Valider</button>
                 </form>"""
-            actions_admin += f"""
-            <form action="/admin/reset-password" method="POST" style="display:inline-block; margin-left: 5px; margin-top:5px;">
-                <input type="hidden" name="user_id" value="{user['id']}">
-                <input type="hidden" name="adherent_id" value="{a['id']}">
-                <input type="text" name="nouveau_mdp" placeholder="Nouveau mdp" required style="width:110px; padding:2px; display:inline-block;">
-                <button type="submit" style="background:#d35400; padding:2px 6px; font-size:0.75rem; width:auto;">Réinitialiser MDP</button>
-            </form>"""
-            adherents_html += f"<li><b>{a['prenom']} {a['nom']}</b> ({a['email']}) - Secteur: {a['secteur']} [Statut: <b>{a['statut']}</b>] {actions_admin}</li>"
+            if is_admin:
+                actions += f"""
+                <form action="/admin/changer-role" method="POST" style="display:inline-block; margin-left:5px;">
+                    <input type="hidden" name="user_id" value="{user['id']}"><input type="hidden" name="adherent_id" value="{a['id']}">
+                    <select name="nouveau_role" onchange="this.form.submit()" style="padding:2px; font-size:0.75rem; width:auto; display:inline-block;">
+                        <option value="membre" {'selected' if a['role']=='membre' else ''}>Membre</option>
+                        <option value="tresorier" {'selected' if a['role']=='tresorier' else ''}>Trésorier</option>
+                        <option value="admin" {'selected' if a['role']=='admin' else ''}>Admin</option>
+                    </select>
+                </form>"""
+            
+            photo_tag = f"<img src='{a['photo_profil']}' style='width:30px; height:30px; border-radius:50%; object-fit:cover; vertical-align:middle; margin-right:8px;' onerror='this.style.display=\"none\"'>" if a['photo_profil'] else ""
+            adherents_gestion_html += f"<li>{photo_tag}<b>{a['prenom']} {a['nom']}</b> — <em>{a['secteur']}</em> (Tél: {a['telephone']}) [Statut: <b>{a['statut']}</b> | Rôle: {a['role']}] {actions}</li>"
 
         aides_admin_html = ""
         for ai in all_aides:
-            validation_actions = ""
-            if ai['statut_validation'] == 'en_attente':
-                validation_actions = f"""
-                <form action="/admin/statuer-aide" method="POST" style="display:inline; margin-left: 5px;">
-                    <input type="hidden" name="user_id" value="{user['id']}">
-                    <input type="hidden" name="aide_id" value="{ai['id']}">
-                    <input type="hidden" name="statut_aide" value="approuve">
+            v_actions = ""
+            if ai['statut_validation'] == 'en_attente' and is_admin:
+                v_actions = f"""
+                <form action="/admin/statuer-aide" method="POST" style="display:inline; margin-left:5px;">
+                    <input type="hidden" name="user_id" value="{user['id']}"><input type="hidden" name="aide_id" value="{ai['id']}"><input type="hidden" name="statut_aide" value="approuve">
                     <button type="submit" style="background:#27ae60; padding:2px 6px; font-size:0.75rem; width:auto;">Approuver</button>
                 </form>
-                <form action="/admin/statuer-aide" method="POST" style="display:inline; margin-left: 5px;">
-                    <input type="hidden" name="user_id" value="{user['id']}">
-                    <input type="hidden" name="aide_id" value="{ai['id']}">
-                    <input type="hidden" name="statut_aide" value="rejete">
+                <form action="/admin/statuer-aide" method="POST" style="display:inline; margin-left:5px;">
+                    <input type="hidden" name="user_id" value="{user['id']}"><input type="hidden" name="aide_id" value="{ai['id']}"><input type="hidden" name="statut_aide" value="rejete">
                     <button type="submit" style="background:#c0392b; padding:2px 6px; font-size:0.75rem; width:auto;">Rejeter</button>
                 </form>"""
-            aides_admin_html += f"<li><b>{ai['prenom']} {ai['nom']}</b> - Motif : {ai['motif']} ({ai['montant_demande']} CFA) [<b>{ai['statut_validation']}</b>] {validation_actions}</li>"
+            aides_admin_html += f"<li><b>{ai['prenom']} {ai['nom']}</b> ({ai['secteur']}) - {ai['motif']} : <b>{ai['montant_demande']} CFA</b> [{ai['statut_validation']}] {v_actions}</li>"
 
-        decaissements_html = "".join([f"<li>{d['motif']} - <b>{d['montant']} CFA</b> (Bénéficiaire: {d['beneficiaire']})</li>" for d in all_decaissements])
+        decaissements_html = "".join([f"<li>{d['motif']} — <b>{d['montant']} CFA</b> (Bénéficiaire: {d['beneficiaire']})</li>" for d in all_decaissements])
 
-        admin_sections_html = f"""
+        finance_sections_html = f"""
         <div class="card">
-            <h2>Trésorerie Globale de l'Association</h2>
+            <h2>Trésorerie Globale & Suivi des Cotisations</h2>
             <div class="dashboard-box">
-                <div>Total Cotisations : {cotis} CFA</div>
-                <div>Aides Versées : {aides_versees} CFA</div>
-                <div>Décaissements : {decs} CFA</div>
+                <div>Total Cotisations : {total_cotis} CFA</div>
+                <div>Aides Versées : {total_aides_approuvees} CFA</div>
+                <div>Dépenses : {total_dec} CFA</div>
             </div>
-            <div style="text-align: center; font-size: 1.2rem; font-weight: bold;">Solde Caisse : <span style="color: #27ae60;">{solde} CFA</span></div>
+            <div style="text-align: center; font-size: 1.2rem; font-weight: bold; margin-bottom: 15px;">Solde Caisse : <span style="color: #27ae60;">{solde} CFA</span></div>
+            <h3 style="font-size:1rem; color:#2980b9;">État des cotisations des membres ({annee_courante})</h3>
+            <ul>{suivi_retards_html}</ul>
         </div>
 
         <div class="card">
-            <h2>Gestion & Validation des Adhérents</h2>
-            <ul>{adherents_html}</ul>
+            <h2>Filtrage et Consultation des Cotisations</h2>
+            <form method="GET" action="/dashboard" style="display:flex; gap:10px; margin-bottom:15px; align-items:flex-end;">
+                <input type="hidden" name="id" value="{user['id']}">
+                <div style="flex:1;" class="form-group" style="margin:0;">
+                    <label>Filtrer par Mois :</label>
+                    <select name="filtre_periode">
+                        <option value="">-- Tous les mois --</option>
+                        {options_filtre_mois}
+                    </select>
+                </div>
+                <div>
+                    <button type="submit" style="background:#2980b9; padding:9px 15px;">Filtrer</button>
+                </div>
+                <div>
+                    <a href="/cotisations/export-pdf{f'?periode={filtre_periode}' if filtre_periode else ''}" class="btn-pdf" target="_blank" style="padding:10px 15px; display:inline-block; font-size:1rem;">Exporter PDF Filtré</a>
+                </div>
+            </form>
+            <div style="max-height:200px; overflow-y:auto;">
+                <table style="width:100%; border-collapse:collapse; font-size:0.9rem;">
+                    <tr style="background:#f1f1f1; text-align:left;"><th style="padding:6px;">Membre</th><th style="padding:6px;">Secteur</th><th style="padding:6px;">Montant</th><th style="padding:6px;">Période</th><th style="padding:6px;">Mode</th></tr>
+                    {cotis_table_html or '<tr><td colspan="5" style="text-align:center; padding:10px;">Aucune cotisation trouvée pour cette période.</td></tr>'}
+                </table>
+            </div>
         </div>
 
         <div class="card">
-            <h2>Suivi & Validation des Demandes d'Aide</h2>
-            <ul>{aides_admin_html or '<li>Aucune demande en attente.</li>'}</ul>
+            <h2>Gestion des Adhérents</h2>
+            <ul>{adherents_gestion_html}</ul>
         </div>
 
         <div class="card">
-            <h2>Enregistrer une Cotisation pour un Membre</h2>
+            <h2>Demandes d'Aide des Membres</h2>
+            <ul>{aides_admin_html or '<li>Aucune demande.</li>'}</ul>
+        </div>
+
+        <div class="card">
+            <h2>Enregistrer une Cotisation</h2>
             <form action="/cotisations-form/" method="POST">
                 <input type="hidden" name="user_id" value="{user['id']}">
                 <div class="form-group"><label>Adhérent :</label><select name="adherent_id" required><option value="">-- Choisir --</option>{options_adherents}</select></div>
                 <div class="form-group"><label>Montant (CFA) :</label><input type="number" name="montant" required></div>
-                <div class="form-group"><label>Période (ex: 2026-09) :</label><input type="text" name="periode" required></div>
+                <div class="form-group"><label>Période (Mois) :</label><select name="periode" required>{"".join([f"<option value='{m}'>{m}</option>" for m in mois_12])}</select></div>
                 <div class="form-group"><label>Mode de paiement :</label><select name="mode_paiement"><option value="especes">Espèces</option><option value="mobile_money">Mobile Money</option><option value="virement">Virement</option></select></div>
-                <button type="submit" style="background-color: #8e44ad;">Enregistrer la cotisation</button>
+                <button type="submit" style="background-color: #8e44ad;">Valider la cotisation</button>
             </form>
         </div>
 
@@ -392,6 +470,7 @@ def afficher_dashboard(id: int, db: sqlite3.Connection = Depends(get_db)):
             </form>
         </div>
 
+        {f'''
         <div class="card">
             <h2>Ajouter un Projet à l'Association</h2>
             <form action="/projets-form/" method="POST">
@@ -400,24 +479,28 @@ def afficher_dashboard(id: int, db: sqlite3.Connection = Depends(get_db)):
                 <div class="form-group"><label>Description :</label><textarea name="description" rows="2"></textarea></div>
                 <div class="form-group"><label>Objectifs :</label><textarea name="objectifs" rows="2"></textarea></div>
                 <div class="form-group"><label>Coût Prévu (CFA) :</label><input type="number" name="cout" required></div>
+                <div class="form-group"><label>URL de la Photo du projet :</label><input type="url" name="photo_projet" placeholder="https://exemple.com/projet.jpg"></div>
                 <div class="form-group"><label>Chronologie :</label><select name="chronologie"><option value="passe">Passé</option><option value="actuel" selected>Actuel</option><option value="avenir">À venir</option></select></div>
                 <div class="form-group"><label>Statut :</label><select name="statut"><option value="planifie">Planifié</option><option value="en_cours">En cours</option><option value="termine">Terminé</option></select></div>
                 <button type="submit" style="background-color: #2980b9;">Ajouter le projet</button>
             </form>
         </div>
+        ''' if is_admin else ''}
         """
 
-    # --- HTML SECTION MEMBRE ---
     member_sections_html = ""
-    if not is_admin:
-        aides_membre_html = "".join([f"<li>Motif : {ai['motif']} ({ai['montant_demande']} CFA) - Statut : [<b>{ai['statut_validation']}</b>]</li>" for ai in all_aides])
-        cotisations_membre_html = "".join([f"<li>Période {c['periode']} : {c['montant']} CFA ({c['mode_paiement']})</li>" for c in all_cotisations])
+    if not is_tresorier:
+        cotis_perso = [c['periode'] for c in all_cotisations if c['adherent_id'] == user['id']]
+        mois_payes_html = "".join([f"<li>Mois de {m} : Payé</li>" for m in mois_12 if m in cotis_perso])
+        mois_retard_html = "".join([f"<li style='color:#c0392b;'>Mois de {m} : <b>Non payé</b></li>" for m in mois_12 if m not in cotis_perso])
+        
+        aides_membre_html = "".join([f"<li>Motif : {ai['motif']} ({ai['montant_demande']} CFA) - Statut : [<b>{ai['statut_validation']}</b>]</li>" for ai in all_aides if ai['adherent_id'] == user['id']])
 
         member_sections_html = f"""
         <div class="card">
-            <h2>Mon Espace Cotisations</h2>
-            <p><b>Total de vos cotisations versées :</b> <span style="color: #27ae60; font-weight: bold;">{cotis} CFA</span></p>
-            <ul>{cotisations_membre_html or '<li>Aucune cotisation enregistrée pour le moment.</li>'}</ul>
+            <h2>Mon Suivi de Cotisations ({annee_courante})</h2>
+            <p>Voici l'état de vos versements mensuels :</p>
+            <ul>{mois_payes_html}{mois_retard_html}</ul>
         </div>
 
         <div class="card">
@@ -434,8 +517,19 @@ def afficher_dashboard(id: int, db: sqlite3.Connection = Depends(get_db)):
         </div>
         """
 
-    # Projets visibles pour tous
-    projets_html = "".join([f"<li><b>{p['titre']}</b> [Statut: {p['statut']} | Coût: {p['cout']} CFA]<br><small>{p['description']}</small></li>" for p in all_projets])
+    projets_html = ""
+    for p in all_projets:
+        img_tag = f"<img src='{p['photo_projet']}' style='width:100%; max-height:200px; object-fit:cover; border-radius:5px; margin-bottom:10px;' onerror='this.style.display=\"none\"'>" if p['photo_projet'] else ""
+        projets_html += f"""
+        <div style="border: 1px solid #eee; padding: 15px; border-radius: 6px; margin-bottom: 15px; background: #fafafa;">
+            {img_tag}
+            <h3 style="margin:0 0 8px 0; color:#2c3e50;">{p['titre']} <span style="font-size:0.8rem; font-weight:normal; background:#e1e8ed; padding:2px 6px; border-radius:4px;">{p['statut']}</span></h3>
+            <p style="margin:0 0 5px 0; font-size:0.9rem;">{p['description']}</p>
+            <p style="margin:0; font-size:0.85rem; color:#7f8c8d;"><b>Coût :</b> {p['cout']} CFA | <b>Chronologie :</b> {p['chronologie']}</p>
+        </div>
+        """
+
+    user_photo = f"<img src='{user['photo_profil']}' style='width:70px; height:70px; border-radius:50%; object-fit:cover; float:right;' onerror='this.style.display=\"none\"'>" if user['photo_profil'] else ""
 
     return f"""
     <!DOCTYPE html>
@@ -459,31 +553,32 @@ def afficher_dashboard(id: int, db: sqlite3.Connection = Depends(get_db)):
             .btn-danger {{ background-color: var(--danger); color: white; padding: 8px 15px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block; }}
             .btn-pdf {{ background-color: var(--pdf); color: white; padding: 5px 10px; text-decoration: none; border-radius: 4px; font-size: 0.85rem; }}
             ul {{ padding-left: 20px; }}
-            li {{ margin-bottom: 10px; font-size: 0.9rem; }}
+            li {{ margin-bottom: 8px; font-size: 0.9rem; }}
+            table th, table td {{ border-bottom: 1px solid #eee; padding: 8px; text-align: left; }}
         </style>
     </head>
     <body>
         <div class="container">
             <h1>Association Tinka - Tableau de Bord</h1>
             
-            <div class="card" style="background: #eaf2f8;">
+            <div class="card" style="background: #eaf2f8; overflow:hidden;">
+                {user_photo}
                 <h2>Mon Profil</h2>
-                <p><b>Nom :</b> {user['prenom']} {user['nom']}</p>
-                <p><b>Secteur :</b> {user['secteur']} | <b>Email :</b> {user['email']}</p>
+                <p><b>Nom & Prénom :</b> {user['prenom']} {user['nom']}</p>
+                <p><b>Secteur :</b> {user['secteur']} | <b>Téléphone :</b> {user['telephone']} | <b>Email :</b> {user['email']}</p>
                 <p><b>Rôle :</b> <span style="text-transform: uppercase; color: #2980b9; font-weight: bold;">{user['role']}</span></p>
                 <a href="/" class="btn-danger">Se déconnecter</a>
             </div>
 
-            {admin_sections_html}
+            {finance_sections_html}
 
             {member_sections_html}
 
             <div class="card">
                 <h2>
                     Projets de l'Association
-                    {f'<a href="/cotisations/export-pdf" class="btn-pdf" target="_blank">Télécharger Rapport PDF</a>' if is_admin else ''}
                 </h2>
-                <ul>{projets_html or '<li>Aucun projet enregistré.</li>'}</ul>
+                <div>{projets_html or '<p>Aucun projet enregistré.</p>'}</div>
             </div>
         </div>
     </body>
