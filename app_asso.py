@@ -1,14 +1,16 @@
-from fastapi import FastAPI, HTTPException, Depends, Form, status, Query
+from fastapi import FastAPI, HTTPException, Depends, Form, status, Query, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, StreamingResponse, RedirectResponse
-import sqlite3
+from fastapi.staticfiles import StaticFiles
 import io
+import os
 import datetime
 from typing import Optional
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
+from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Association Tinka", version="7.8")
+app = FastAPI(title="API Gestion Association Tinka", version="9.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -18,187 +20,130 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-DB_NAME = "association.db"
+SUPABASE_URL = os.getenv("SUPABASE_URL", "VOTRE_SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY", "VOTRE_SUPABASE_KEY")
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-def get_db():
-    conn = sqlite3.connect(DB_NAME)
-    conn.row_factory = sqlite3.Row
-    try:
-        yield conn
-    finally:
-        conn.close()
-
-def init_db():
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS adherents (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        nom TEXT NOT NULL,
-        prenom TEXT NOT NULL,
-        email TEXT UNIQUE NOT NULL,
-        telephone TEXT,
-        adresse TEXT,
-        secteur TEXT,
-        photo_profil TEXT DEFAULT '',
-        mot_de_passe TEXT NOT NULL,
-        role TEXT CHECK(role IN ('admin', 'tresorier', 'membre')) DEFAULT 'membre',
-        statut TEXT CHECK(statut IN ('en_attente', 'actif', 'inactif')) DEFAULT 'en_attente',
-        date_adhesion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    """)
-    cursor.execute("SELECT COUNT(*) FROM adherents")
-    if cursor.fetchone()[0] == 0:
-        cursor.execute("""
-        INSERT INTO adherents (nom, prenom, email, telephone, adresse, secteur, mot_de_passe, role, statut)
-        VALUES ('Admin', 'Super', 'admin@tinka.com', '770000000', 'Siège', 'Bureau', 'admin123', 'admin', 'actif')
-        """)
-
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS cotisations (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        adherent_id INTEGER NOT NULL,
-        montant REAL NOT NULL,
-        periode TEXT NOT NULL,
-        date_paiement TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        mode_paiement TEXT CHECK(mode_paiement IN ('especes', 'mobile_money', 'virement')),
-        FOREIGN KEY (adherent_id) REFERENCES adherents(id) ON DELETE CASCADE
-    )
-    """)
-
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS aides (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        adherent_id INTEGER NOT NULL,
-        motif TEXT NOT NULL,
-        montant_demande REAL NOT NULL,
-        statut_validation TEXT CHECK(statut_validation IN ('en_attente', 'approuve', 'rejete')) DEFAULT 'en_attente',
-        date_demande TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (adherent_id) REFERENCES adherents(id) ON DELETE CASCADE
-    )
-    """)
-
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS decaissements (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        motif TEXT NOT NULL,
-        montant REAL NOT NULL,
-        beneficiaire TEXT NOT NULL,
-        date_decaissement TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    """)
-
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS projets (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        titre TEXT NOT NULL,
-        description TEXT,
-        objectifs TEXT,
-        cout REAL,
-        photo_projet TEXT DEFAULT '',
-        chronologie TEXT CHECK(chronologie IN ('passe', 'actuel', 'avenir')) DEFAULT 'actuel',
-        statut TEXT CHECK(statut IN ('planifie', 'en_cours', 'termine')) DEFAULT 'planifie'
-    )
-    """)
-    conn.commit()
-    conn.close()
-
-init_db()
+UPLOAD_DIR = "static/uploads"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.post("/login-form/")
-def login_form(email: str = Form(...), mot_de_passe: str = Form(...), db: sqlite3.Connection = Depends(get_db)):
-    cursor = db.cursor()
-    cursor.execute("SELECT * FROM adherents WHERE email = ? AND mot_de_passe = ?", (email, mot_de_passe))
-    user = cursor.fetchone()
-    if not user:
+def login_form(email: str = Form(...), mot_de_passe: str = Form(...)):
+    res = supabase.table("adherents").select("*").eq("email", email).eq("mot_de_passe", mot_de_passe).execute()
+    users = res.data
+    if not users:
         return HTMLResponse(content="<script>alert('Email ou mot de passe incorrect.'); window.location.href='/';</script>", status_code=401)
+    user = users[0]
     if user['statut'] != 'actif':
         return HTMLResponse(content="<script>alert('Votre compte est en attente de validation.'); window.location.href='/';</script>", status_code=403)
     return RedirectResponse(url=f"/dashboard?id={user['id']}", status_code=status.HTTP_303_SEE_OTHER)
 
 @app.post("/adherents-form/")
-def creer_adherent_form(
+async def creer_adherent_form(
     nom: str = Form(...), prenom: str = Form(...), email: str = Form(...),
     telephone: str = Form(...), adresse: str = Form(...), secteur: str = Form(...),
-    photo_profil: Optional[str] = Form(""), mot_de_passe: str = Form(...), db: sqlite3.Connection = Depends(get_db)
+    mot_de_passe: str = Form(...), file_photo: UploadFile = File(None)
 ):
-    cursor = db.cursor()
+    photo_path = ""
+    if file_photo and file_photo.filename:
+        file_location = os.path.join(UPLOAD_DIR, file_photo.filename)
+        with open(file_location, "wb+") as file_object:
+            file_object.write(await file_photo.read())
+        photo_path = f"/static/uploads/{file_photo.filename}"
+
     try:
-        cursor.execute(
-            """INSERT INTO adherents (nom, prenom, email, telephone, adresse, secteur, photo_profil, mot_de_passe) 
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (nom, prenom, email, telephone, adresse, secteur, photo_profil, mot_de_passe)
-        )
-        db.commit()
+        supabase.table("adherents").insert({
+            "nom": nom, "prenom": prenom, "email": email, "telephone": telephone,
+            "adresse": adresse, "secteur": secteur, "photo_profil": photo_path, "mot_de_passe": mot_de_passe
+        }).execute()
         return HTMLResponse(content="<script>alert('Compte créé avec succès ! En attente de validation.'); window.location.href='/';</script>")
-    except sqlite3.IntegrityError:
-        return HTMLResponse(content="<script>alert('Cet email est déjà utilisé.'); window.location.href='/';</script>")
+    except Exception:
+        return HTMLResponse(content="<script>alert('Cet email est déjà utilisé ou une erreur est survenue.'); window.location.href='/';</script>")
 
 @app.post("/modifier-photo")
-def modifier_photo(user_id: int = Form(...), photo_profil: str = Form(...), db: sqlite3.Connection = Depends(get_db)):
-    cursor = db.cursor()
-    cursor.execute("UPDATE adherents SET photo_profil = ? WHERE id = ?", (photo_profil, user_id))
-    db.commit()
+async def modifier_photo(user_id: int = Form(...), file_photo: UploadFile = File(...)):
+    photo_path = ""
+    if file_photo and file_photo.filename:
+        file_location = os.path.join(UPLOAD_DIR, file_photo.filename)
+        with open(file_location, "wb+") as file_object:
+            file_object.write(await file_photo.read())
+        photo_path = f"/static/uploads/{file_photo.filename}"
+
+    supabase.table("adherents").update({"photo_profil": photo_path}).eq("id", user_id).execute()
     return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
 
 @app.post("/admin/valider-adherent")
-def valider_adherent(user_id: int = Form(...), adherent_id: int = Form(...), db: sqlite3.Connection = Depends(get_db)):
-    cursor = db.cursor()
-    cursor.execute("UPDATE adherents SET statut = 'actif' WHERE id = ?", (adherent_id,))
-    db.commit()
+def valider_adherent(user_id: int = Form(...), adherent_id: int = Form(...)):
+    supabase.table("adherents").update({"statut": "actif"}).eq("id", adherent_id).execute()
     return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
 
 @app.post("/admin/changer-role")
-def changer_role(user_id: int = Form(...), adherent_id: int = Form(...), nouveau_role: str = Form(...), db: sqlite3.Connection = Depends(get_db)):
-    cursor = db.cursor()
-    cursor.execute("UPDATE adherents SET role = ? WHERE id = ?", (nouveau_role, adherent_id))
-    db.commit()
+def changer_role(user_id: int = Form(...), adherent_id: int = Form(...), nouveau_role: str = Form(...)):
+    supabase.table("adherents").update({"role": nouveau_role}).eq("id", adherent_id).execute()
     return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
 
+@app.post("/admin/reset-password")
+def reset_password(user_id: int = Form(...), adherent_id: int = Form(...), nouveau_mdp: str = Form(...)):
+    supabase.table("adherents").update({"mot_de_passe": nouveau_mdp}).eq("id", adherent_id).execute()
+    return HTMLResponse(content=f"<script>alert('Mot de passe réinitialisé avec succès !'); window.location.href='/dashboard?id={user_id}';</script>")
+
 @app.post("/cotisations-form/")
-def ajouter_cotisation(user_id: int = Form(...), adherent_id: int = Form(...), montant: float = Form(...), periode: str = Form(...), mode_paiement: str = Form(...), db: sqlite3.Connection = Depends(get_db)):
-    cursor = db.cursor()
-    cursor.execute("INSERT INTO cotisations (adherent_id, montant, periode, mode_paiement) VALUES (?, ?, ?, ?)", (adherent_id, montant, periode, mode_paiement))
-    db.commit()
+def ajouter_cotisation(user_id: int = Form(...), adherent_id: int = Form(...), montant: float = Form(...), periode: str = Form(...), mode_paiement: str = Form(...)):
+    supabase.table("cotisations").insert({
+        "adherent_id": adherent_id, "montant": montant, "periode": periode, "mode_paiement": mode_paiement
+    }).execute()
     return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
 
 @app.post("/aides-form/")
-def demander_aide(user_id: int = Form(...), motif: str = Form(...), montant_demande: float = Form(...), db: sqlite3.Connection = Depends(get_db)):
-    cursor = db.cursor()
-    cursor.execute("INSERT INTO aides (adherent_id, motif, montant_demande) VALUES (?, ?, ?)", (user_id, motif, montant_demande))
-    db.commit()
+def demander_aide(user_id: int = Form(...), motif: str = Form(...), montant_demande: float = Form(...)):
+    supabase.table("aides").insert({
+        "adherent_id": user_id, "motif": motif, "montant_demande": montant_demande
+    }).execute()
     return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
 
 @app.post("/decaissements-form/")
-def ajouter_decaissement(user_id: int = Form(...), motif: str = Form(...), montant: float = Form(...), beneficiaire: str = Form(...), db: sqlite3.Connection = Depends(get_db)):
-    cursor = db.cursor()
-    cursor.execute("INSERT INTO decaissements (motif, montant, beneficiaire) VALUES (?, ?, ?)", (motif, montant, beneficiaire))
-    db.commit()
+def ajouter_decaissement(user_id: int = Form(...), motif: str = Form(...), montant: float = Form(...), beneficiaire: str = Form(...)):
+    supabase.table("decaissements").insert({
+        "motif": motif, "montant": montant, "beneficiaire": beneficiaire
+    }).execute()
     return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
 
 @app.post("/projets-form/")
-def ajouter_projet(user_id: int = Form(...), titre: str = Form(...), description: str = Form(...), objectifs: str = Form(...), cout: float = Form(...), photo_projet: str = Form(""), chronologie: str = Form(...), statut: str = Form(...), db: sqlite3.Connection = Depends(get_db)):
-    cursor = db.cursor()
-    cursor.execute("INSERT INTO projets (titre, description, objectifs, cout, photo_projet, chronologie, statut) VALUES (?, ?, ?, ?, ?, ?, ?)", (titre, description, objectifs, cout, photo_projet, chronologie, statut))
-    db.commit()
+async def ajouter_projet(
+    user_id: int = Form(...), titre: str = Form(...), description: str = Form(...), 
+    objectifs: str = Form(...), cout: float = Form(...), file_projet: UploadFile = File(None), 
+    chronologie: str = Form(...), statut: str = Form(...)
+):
+    photo_path = ""
+    if file_projet and file_projet.filename:
+        file_location = os.path.join(UPLOAD_DIR, file_projet.filename)
+        with open(file_location, "wb+") as file_object:
+            file_object.write(await file_projet.read())
+        photo_path = f"/static/uploads/{file_projet.filename}"
+
+    supabase.table("projets").insert({
+        "titre": titre, "description": description, "objectifs": objectifs,
+        "cout": cout, "photo_projet": photo_path, "chronologie": chronologie, "statut": statut
+    }).execute()
     return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
 
 @app.get("/cotisations/export-pdf")
-def export_cotisations_pdf(periode: Optional[str] = Query(None), db: sqlite3.Connection = Depends(get_db)):
-    cursor = db.cursor()
+def export_cotisations_pdf(periode: Optional[str] = Query(None)):
+    query = supabase.table("cotisations").select("*, adherents(nom, prenom, secteur)")
     if periode:
-        cursor.execute("SELECT c.*, a.nom, a.prenom, a.secteur FROM cotisations c JOIN adherents a ON c.adherent_id = a.id WHERE c.periode = ?", (periode,))
+        query = query.eq("periode", periode)
         titre_rapport = f"Association Tinka - Rapport des Cotisations ({periode})"
     else:
-        cursor.execute("SELECT c.*, a.nom, a.prenom, a.secteur FROM cotisations c JOIN adherents a ON c.adherent_id = a.id")
         titre_rapport = "Association Tinka - Rapport Global des Cotisations"
+    
+    res = query.execute()
+    cotis = res.data
 
-    cotis = cursor.fetchall()
     buffer = io.BytesIO()
     p = canvas.Canvas(buffer, pagesize=letter)
     width, height = letter
 
-    # En-tête avec Logo de l'association
     p.setFont("Helvetica-Bold", 14)
     p.setFillColorRGB(0.15, 0.25, 0.35)
     p.drawString(50, height - 40, "ASSOCIATION TINKA")
@@ -216,7 +161,11 @@ def export_cotisations_pdf(periode: Optional[str] = Query(None), db: sqlite3.Con
     y = height - 130
     total = 0
     for c in cotis:
-        p.drawString(50, y, f"- {c['prenom']} {c['nom']} ({c['secteur']}) | Période: {c['periode']} | Montant: {c['montant']} CFA ({c['mode_paiement']})")
+        adh = c.get('adherents', {}) or {}
+        nom = adh.get('nom', '')
+        prenom = adh.get('prenom', '')
+        secteur = adh.get('secteur', '')
+        p.drawString(50, y, f"- {prenom} {nom} ({secteur}) | Période: {c['periode']} | Montant: {c['montant']} CFA ({c['mode_paiement']})")
         total += c['montant']
         y -= 20
         if y < 50:
@@ -265,14 +214,14 @@ def afficher_portail():
             </div>
             <div class="card">
                 <h2>Inscription d'un Nouvel Adhérent</h2>
-                <form action="/adherents-form/" method="POST">
+                <form action="/adherents-form/" method="POST" enctype="multipart/form-data">
                     <div class="form-group"><label>Nom :</label><input type="text" name="nom" required></div>
                     <div class="form-group"><label>Prénom :</label><input type="text" name="prenom" required></div>
                     <div class="form-group"><label>Email :</label><input type="email" name="email" required></div>
                     <div class="form-group"><label>Téléphone :</label><input type="text" name="telephone" required></div>
                     <div class="form-group"><label>Adresse :</label><input type="text" name="adresse" required></div>
                     <div class="form-group"><label>Secteur :</label><input type="text" name="secteur" required></div>
-                    <div class="form-group"><label>URL de votre Photo de profil :</label><input type="url" name="photo_profil" placeholder="https://exemple.com/photo.jpg"></div>
+                    <div class="form-group"><label>Photo de profil (PC ou Téléphone) :</label><input type="file" name="file_photo" accept="image/*"></div>
                     <div class="form-group"><label>Mot de passe :</label><input type="password" name="mot_de_passe" required></div>
                     <button type="submit">S'inscrire</button>
                 </form>
@@ -283,12 +232,11 @@ def afficher_portail():
     """
 
 @app.get("/dashboard", response_class=HTMLResponse)
-def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None), db: sqlite3.Connection = Depends(get_db)):
-    cursor = db.cursor()
-    cursor.execute("SELECT * FROM adherents WHERE id = ?", (id,))
-    user = cursor.fetchone()
-    if not user:
+def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
+    user_res = supabase.table("adherents").select("*").eq("id", id).execute()
+    if not user_res.data:
         return RedirectResponse(url="/", status_code=303)
+    user = user_res.data[0]
 
     is_admin = user['role'] == 'admin'
     is_tresorier = user['role'] in ['admin', 'tresorier']
@@ -296,25 +244,22 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None), db:
     annee_courante = datetime.datetime.now().year
     mois_12 = [f"{annee_courante}-{m:02d}" for m in range(1, 13)]
 
-    cursor.execute("SELECT * FROM adherents WHERE statut = 'actif'")
-    all_actifs = cursor.fetchall()
-
-    cursor.execute("SELECT * FROM adherents")
-    all_adherents = cursor.fetchall()
-
-    cursor.execute("SELECT c.*, a.nom, a.prenom, a.secteur, a.telephone FROM cotisations c JOIN adherents a ON c.adherent_id = a.id")
-    all_cotisations = cursor.fetchall()
+    all_actifs = supabase.table("adherents").select("*").eq("statut", "actif").execute().data
+    all_adherents = supabase.table("adherents").select("*").execute().data
+    
+    cotis_res = supabase.table("cotisations").select("*, adherents(nom, prenom, secteur, telephone)").execute()
+    all_cotisations = cotis_res.data
 
     cotis_affichees = [c for c in all_cotisations if c['periode'] == filtre_periode] if filtre_periode else all_cotisations
 
-    cursor.execute("SELECT ai.*, a.nom, a.prenom, a.secteur FROM aides ai JOIN adherents a ON ai.adherent_id = a.id")
-    all_aides = cursor.fetchall()
+    aides_res = supabase.table("aides").select("*, adherents(nom, prenom, secteur)").execute()
+    all_aides = aides_res.data
 
-    cursor.execute("SELECT * FROM decaissements")
-    all_decaissements = cursor.fetchall()
+    dec_res = supabase.table("decaissements").select("*").execute()
+    all_decaissements = dec_res.data
 
-    cursor.execute("SELECT * FROM projets")
-    all_projets = cursor.fetchall()
+    proj_res = supabase.table("projets").select("*").execute()
+    all_projets = proj_res.data
 
     total_cotis = sum([c['montant'] for c in all_cotisations])
     total_aides_approuvees = sum([ai['montant_demande'] for ai in all_aides if ai['statut_validation'] == 'approuve'])
@@ -332,7 +277,11 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None), db:
             statut_ajour = "<span style='color: #27ae60; font-weight:bold;'>À jour</span>" if not mois_manquants else f"<span style='color: #c0392b;'>Retard ({len(mois_manquants)} mois)</span>"
             suivi_retards_html += f"<li><b>{a['prenom']} {a['nom']}</b> (Secteur: {a['secteur']} | Tél: {a['telephone']}) : {statut_ajour}</li>"
 
-        cotis_table_html = "".join([f"<tr><td>{c['prenom']} {c['nom']}</td><td>{c['secteur']}</td><td><b>{c['montant']} CFA</b></td><td>{c['periode']}</td><td>{c['mode_paiement']}</td></tr>" for c in cotis_affichees])
+        cotis_table_html = ""
+        for c in cotis_affichees:
+            adh = c.get('adherents', {}) or {}
+            cotis_table_html += f"<tr><td>{adh.get('prenom','')} {adh.get('nom','')}</td><td>{adh.get('secteur','')}</td><td><b>{c['montant']} CFA</b></td><td>{c['periode']}</td><td>{c['mode_paiement']}</td></tr>"
+
         options_filtre_mois = "".join([f"<option value='{m}' {'selected' if filtre_periode==m else ''}>{m}</option>" for m in mois_12])
 
         adherents_gestion_html = ""
@@ -353,8 +302,14 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None), db:
                         <option value="tresorier" {'selected' if a['role']=='tresorier' else ''}>Trésorier</option>
                         <option value="admin" {'selected' if a['role']=='admin' else ''}>Admin</option>
                     </select>
+                </form>
+                <form action="/admin/reset-password" method="POST" style="display:inline-block; margin-left:5px; margin-top:5px;">
+                    <input type="hidden" name="user_id" value="{user['id']}">
+                    <input type="hidden" name="adherent_id" value="{a['id']}">
+                    <input type="text" name="nouveau_mdp" placeholder="Nouveau mdp" required style="width:100px; padding:2px; display:inline-block; font-size:0.75rem;">
+                    <button type="submit" style="background:#d35400; padding:2px 5px; font-size:0.7rem; width:auto;">Réinitialiser MDP</button>
                 </form>"""
-            
+
             photo_tag = f"<img src='{a['photo_profil']}' style='width:30px; height:30px; border-radius:50%; object-fit:cover; vertical-align:middle; margin-right:8px;' onerror='this.style.display=\"none\"'>" if a['photo_profil'] else ""
             adherents_gestion_html += f"<li>{photo_tag}<b>{a['prenom']} {a['nom']}</b> — <em>{a['secteur']}</em> (Tél: {a['telephone']}) [Statut: <b>{a['statut']}</b> | Rôle: {a['role']}] {actions}</li>"
 
@@ -398,7 +353,7 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None), db:
         </div>
 
         <div class="card">
-            <h2>Gestion des Adhérents</h2>
+            <h2>Gestion des Adhérents & Réinitialisation des Mots de Passe</h2>
             <ul>{adherents_gestion_html}</ul>
         </div>
 
@@ -417,13 +372,13 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None), db:
         {f'''
         <div class="card">
             <h2>Ajouter un Projet au Bureau (Planification)</h2>
-            <form action="/projets-form/" method="POST">
+            <form action="/projets-form/" method="POST" enctype="multipart/form-data">
                 <input type="hidden" name="user_id" value="{user['id']}">
                 <div class="form-group"><label>Titre :</label><input type="text" name="titre" required></div>
                 <div class="form-group"><label>Description :</label><textarea name="description" rows="2"></textarea></div>
                 <div class="form-group"><label>Objectifs :</label><textarea name="objectifs" rows="2"></textarea></div>
                 <div class="form-group"><label>Coût Prévu (CFA) :</label><input type="number" name="cout" required></div>
-                <div class="form-group"><label>URL de la Photo du projet :</label><input type="url" name="photo_projet" placeholder="https://exemple.com/projet.jpg"></div>
+                <div class="form-group"><label>Photo du projet (PC/Téléphone) :</label><input type="file" name="file_projet" accept="image/*"></div>
                 <div class="form-group"><label>Chronologie :</label><select name="chronologie"><option value="passe">Passé</option><option value="actuel" selected>Actuel</option><option value="avenir">À venir</option></select></div>
                 <div class="form-group"><label>Statut :</label><select name="statut"><option value="planifie">Planifié</option><option value="en_cours">En cours</option><option value="termine">Terminé</option></select></div>
                 <button type="submit" style="background-color: #2980b9;">Ajouter le projet</button>
@@ -511,14 +466,14 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None), db:
                 <p><b>Rôle :</b> <span style="text-transform: uppercase; color: #2980b9; font-weight: bold;">{user['role']}</span></p>
                 
                 <hr style="border:0; border-top:1px solid #d0e1f9; margin:10px 0;">
-                <form action="/modifier-photo" method="POST" style="display:flex; gap:10px; align-items:flex-end;">
+                <form action="/modifier-photo" method="POST" enctype="multipart/form-data" style="display:flex; gap:10px; align-items:flex-end;">
                     <input type="hidden" name="user_id" value="{user['id']}">
                     <div style="flex:1;" class="form-group">
-                        <label style="font-size:0.8rem;">Modifier/Ajouter ma photo (URL) :</label>
-                        <input type="url" name="photo_profil" value="{user['photo_profil']}" placeholder="https://..." required style="padding:5px; font-size:0.85rem;">
+                        <label style="font-size:0.8rem;">Mettre à jour ma photo (depuis PC ou Téléphone) :</label>
+                        <input type="file" name="file_photo" accept="image/*" required style="padding:3px; font-size:0.85rem;">
                     </div>
                     <div>
-                        <button type="submit" style="background:#2980b9; padding:6px 12px; font-size:0.85rem; width:auto;">Mettre à jour</button>
+                        <button type="submit" style="background:#2980b9; padding:6px 12px; font-size:0.85rem; width:auto;">Envoyer</button>
                     </div>
                 </form>
                 <br>
