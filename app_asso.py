@@ -9,11 +9,12 @@ from typing import Optional
 import bcrypt
 import qrcode
 import base64
+import urllib.parse
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Association Tinka", version="13.0")
+app = FastAPI(title="API Gestion Association Tinka", version="14.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -387,7 +388,7 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
         all_actifs = supabase.table("adherents").select("*").eq("statut", "actif").execute().data
         all_adherents = supabase.table("adherents").select("*").execute().data
         
-        cotis_res = supabase.table("cotisations").select("*, adherents(nom, prenom, secteur, telephone)").execute()
+        cotis_res = supabase.table("cotisations").select("*, adherents(nom, prenom, secteur, telephone, email)").execute()
         all_cotisations = cotis_res.data
 
         cotis_affichees = [c for c in all_cotisations if c['periode'] == filtre_periode] if filtre_periode else all_cotisations
@@ -414,10 +415,42 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
             options_adherents = "".join([f"<option value='{a['id']}'>{a['prenom']} {a['nom']} — Secteur: {a['secteur']} (Tél: {a['telephone']})</option>" for a in all_actifs if a['role'] != 'admin'])
             
             suivi_retards_html = ""
+            relances_sms_html = ""
             for a in all_actifs:
                 cotis_membre = [c['periode'] for c in all_cotisations if c['adherent_id'] == a['id']]
                 mois_manquants = [m for m in mois_12 if m not in cotis_membre]
-                statut_ajour = "<span class='text-emerald-600 font-bold'>À jour</span>" if not mois_manquants else f"<span class='text-red-600 font-bold'>Retard ({len(mois_manquants)} mois)</span>"
+                
+                if not mois_manquants:
+                    statut_ajour = "<span class='text-emerald-600 font-bold'>À jour</span>"
+                else:
+                    nb_retard = len(mois_manquants)
+                    statut_ajour = f"<span class='text-red-600 font-bold'>Retard ({nb_retard} mois)</span>"
+                    
+                    # Génération des messages de relance pré-remplis
+                    msg_sms = urllib.parse.quote(f"Bonjour {a['prenom']} {a['nom']}, le bureau de l'Association Tinka vous rappelle que vous avez {nb_retard} mois de cotisation en retard ({', '.join(mois_manquants)}). Merci de régulariser.")
+                    msg_email_sujet = urllib.parse.quote("Rappel - Cotisation en retard (Association Tinka)")
+                    msg_email_corps = urllib.parse.quote(f"Bonjour {a['prenom']} {a['nom']},\n\nLe bureau exécutif de l'Association Tinka vous rappelle que vous avez {nb_retard} mois de cotisation en attente de règlement ({', '.join(mois_manquants)}).\n\nMerci de bien vouloir régulariser votre situation.\n\nCordialement,\nLe Trésorier.")
+
+                    tel = a.get('telephone', '')
+                    email_dest = a.get('email', '')
+
+                    boutons_relance = f"""
+                    <div class="mt-2 flex gap-2 flex-wrap">
+                        <a href="sms:{tel}?body={msg_sms}" class="bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 rounded text-xs font-bold inline-flex items-center gap-1">💬 Relancer par SMS</a>
+                        <a href="mailto:{email_dest}?subject={msg_email_sujet}&body={msg_email_corps}" class="bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1 rounded text-xs font-bold inline-flex items-center gap-1">✉️ Relancer par E-mail</a>
+                    </div>
+                    """
+                    relances_sms_html += f"""
+                    <div class="bg-red-50 p-3 rounded-xl border border-red-100 mb-3 text-sm">
+                        <div class="flex justify-between items-center">
+                            <div><b>{a['prenom']} {a['nom']}</b> <span class='text-xs text-slate-500'>({a['secteur']} - {tel})</span></div>
+                            <span class="text-red-700 font-bold text-xs bg-red-100 px-2 py-0.5 rounded-full">{nb_retard} mois manquant(s)</span>
+                        </div>
+                        <div class="text-xs text-slate-600 mt-1">Mois en retard : {', '.join(mois_manquants)}</div>
+                        {boutons_relance}
+                    </div>
+                    """
+
                 suivi_retards_html += f"<li class='py-1.5 border-b border-slate-100 flex justify-between items-center text-sm'><span><b>{a['prenom']} {a['nom']}</b> <span class='text-xs text-slate-400'>({a['secteur']})</span></span> {statut_ajour}</li>"
 
             cotis_table_html = ""
@@ -481,6 +514,14 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
 
                 <h3 class="text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">État des cotisations ({annee_courante})</h3>
                 <ul class="max-h-60 overflow-y-auto pr-2">{suivi_retards_html}</ul>
+            </div>
+
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
+                <h2 class="text-lg font-bold text-amber-600 mb-2 border-b pb-2">📢 Centre de Relances (SMS & E-mails)</h2>
+                <p class="text-xs text-slate-500 mb-4">Cliquez pour envoyer instantanément un rappel de cotisation pré-rempli aux membres en retard.</p>
+                <div class="max-h-80 overflow-y-auto pr-1">
+                    {relances_sms_html or '<div class="text-sm text-emerald-600 font-semibold p-3 bg-emerald-50 rounded-xl text-center">🎉 Aucun membre en retard pour le moment ! Tout le monde est à jour.</div>'}
+                </div>
             </div>
 
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
