@@ -13,7 +13,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Association Tinka", version="10.0")
+app = FastAPI(title="API Gestion Association Tinka", version="11.1")
 
 app.add_middleware(
     CORSMiddleware,
@@ -31,7 +31,6 @@ UPLOAD_DIR = "static/uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# Fonctions utilitaires pour les mots de passe sécurisés (bcrypt)
 def hacher_mdp(mdp: str) -> str:
     return bcrypt.hashpw(mdp.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
@@ -39,10 +38,8 @@ def verifier_mdp(mdp: str, hashed: str) -> bool:
     try:
         return bcrypt.checkpw(mdp.encode('utf-8'), hashed.encode('utf-8'))
     except Exception:
-        # Rétrocompatibilité si un ancien mot de passe était en clair
         return mdp == hashed
 
-# Générateur de QR Code en base64 pour affichage direct dans la page HTML
 def generer_qrcode_base64(url: str) -> str:
     qr = qrcode.QRCode(box_size=4, border=2)
     qr.add_data(url)
@@ -52,7 +49,6 @@ def generer_qrcode_base64(url: str) -> str:
     img.save(buffered, format="PNG")
     return base64.b64encode(buffered.getvalue()).decode("utf-8")
 
-# Redirections de secours
 @app.get("/login-form", include_in_schema=False)
 @app.get("/login-form/", include_in_schema=False)
 def login_get_redirect():
@@ -68,7 +64,6 @@ def login_form(email: str = Form(...), mot_de_passe: str = Form(...)):
             return HTMLResponse(content="<script>alert('Email ou mot de passe incorrect.'); window.location.href='/';</script>", status_code=401)
         
         user = users[0]
-        # Vérification sécurisée du mot de passe haché
         if not verifier_mdp(mot_de_passe, user['mot_de_passe']):
             return HTMLResponse(content="<script>alert('Email ou mot de passe incorrect.'); window.location.href='/';</script>", status_code=401)
 
@@ -92,7 +87,6 @@ async def creer_adherent_form(
             file_object.write(await file_photo.read())
         photo_path = f"/static/uploads/{file_photo.filename}"
 
-    # Hachage sécurisé du mot de passe avant insertion
     mdp_securise = hacher_mdp(mot_de_passe)
 
     try:
@@ -150,9 +144,9 @@ def demander_aide(user_id: int = Form(...), motif: str = Form(...), montant_dema
 
 @app.post("/decaissements-form/")
 @app.post("/decaissements-form")
-def ajouter_decaissement(user_id: int = Form(...), motif: str = Form(...), montant: float = Form(...), beneficiaire: str = Form(...)):
+def ajouter_decaissement(user_id: int = Form(...), motif: str = Form(...), montant: float = Form(...), beneficiaire: str = Form(...), categorie: str = Form(...)):
     supabase.table("decaissements").insert({
-        "motif": motif, "montant": montant, "beneficiaire": beneficiaire
+        "motif": motif, "montant": montant, "beneficiaire": beneficiaire, "categorie": categorie
     }).execute()
     return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
 
@@ -226,7 +220,6 @@ def export_cotisations_pdf(periode: Optional[str] = Query(None)):
     buffer.seek(0)
     return StreamingResponse(buffer, media_type="application/pdf", headers={"Content-Disposition": f"attachment; filename=rapport_cotisations_{periode or 'global'}.pdf"})
 
-# Route pour télécharger un reçu de paiement individuel en PDF
 @app.get("/cotisation/recu-pdf/{cotisation_id}")
 def telecharger_recu_pdf(cotisation_id: int):
     res = supabase.table("cotisations").select("*, adherents(nom, prenom, secteur, telephone, email)").eq("id", cotisation_id).execute()
@@ -240,7 +233,6 @@ def telecharger_recu_pdf(cotisation_id: int):
     p = canvas.Canvas(buffer, pagesize=letter)
     width, height = letter
 
-    # En-tête du reçu
     p.setFont("Helvetica-Bold", 16)
     p.setFillColorRGB(0.15, 0.25, 0.35)
     p.drawString(50, height - 50, "ASSOCIATION TINKA")
@@ -250,7 +242,6 @@ def telecharger_recu_pdf(cotisation_id: int):
     p.setStrokeColorRGB(0.8, 0.8, 0.8)
     p.line(50, height - 80, width - 50, height - 80)
 
-    # Informations du reçu
     p.setFont("Helvetica-Bold", 12)
     p.setFillColorRGB(0, 0, 0)
     p.drawString(50, height - 120, f"Reçu N° : TK-{c['id']:04d}")
@@ -260,7 +251,6 @@ def telecharger_recu_pdf(cotisation_id: int):
     p.drawString(50, height - 195, f"Secteur : {adh.get('secteur','')}")
     p.drawString(50, height - 220, f"Téléphone : {adh.get('telephone','')}")
 
-    # Cadre montant
     p.rect(50, height - 310, width - 100, 60, stroke=1, fill=0)
     p.setFont("Helvetica-Bold", 14)
     p.setFillColorRGB(0.15, 0.65, 0.35)
@@ -269,7 +259,6 @@ def telecharger_recu_pdf(cotisation_id: int):
     p.setFillColorRGB(0, 0, 0)
     p.drawString(70, height - 285, f"Période couverte : {c['periode']} | Mode de règlement : {c['mode_paiement']}")
 
-    # Pied de page
     p.setFont("Helvetica-Oblique", 9)
     p.setFillColorRGB(0.5, 0.5, 0.5)
     p.drawString(50, 100, "Ce reçu est certifié conforme par le Bureau Exécutif de l'Association Tinka.")
@@ -280,7 +269,6 @@ def telecharger_recu_pdf(cotisation_id: int):
 
 @app.get("/", response_class=HTMLResponse)
 def afficher_portail():
-    # Génération automatique du QR code pointant vers l'URL du site
     url_site = "https://tinka-association.onrender.com"
     qr_b64 = generer_qrcode_base64(url_site)
 
@@ -310,13 +298,10 @@ def afficher_portail():
     <body>
         <div class="container">
             <h1>Association Tinka - Portail Officiel</h1>
-            
-            <!-- Section QR Code -->
             <div class="qrcode-box">
                 <img src="data:image/png;base64,{qr_b64}" alt="QR Code de connexion">
                 <span style="font-size: 0.85rem; font-weight: 600; color: #475569;">Scannez pour accéder au portail</span>
             </div>
-
             <div class="card">
                 <h2>Connexion</h2>
                 <form action="/login-form" method="POST">
@@ -399,6 +384,16 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
 
             options_filtre_mois = "".join([f"<option value='{m}' {'selected' if filtre_periode==m else ''}>{m}</option>" for m in mois_12])
 
+            # Répartition des dépenses par catégorie (incluant Daara Tinka et autres)
+            categories_dict = {}
+            for d in all_decaissements:
+                cat = d.get('categorie', 'Divers') or 'Divers'
+                categories_dict[cat] = categories_dict.get(cat, 0) + d['montant']
+            
+            repartition_depenses_html = ""
+            for cat, montant_cat in categories_dict.items():
+                repartition_depenses_html += f"<li><b>{cat}</b> : {montant_cat} CFA</li>"
+
             adherents_gestion_html = ""
             for a in all_adherents:
                 actions = ""
@@ -430,15 +425,46 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
 
             finance_sections_html = f"""
             <div class="card">
-                <h2>Trésorerie Globale & Suivi des Cotisations</h2>
+                <h2>Trésorerie Globale & Suivi des Dépenses</h2>
                 <div class="dashboard-box">
                     <div>Total Cotisations : {total_cotis} CFA</div>
                     <div>Aides Versées : {total_aides_approuvees} CFA</div>
-                    <div>Dépenses : {total_dec} CFA</div>
+                    <div>Total Dépenses : {total_dec} CFA</div>
                 </div>
-                <div style="text-align: center; font-size: 1.2rem; font-weight: bold; margin-bottom: 15px;">Solde Caisse : <span style="color: #27ae60;">{solde} CFA</span></div>
-                <h3 style="font-size:1rem; color:#2980b9;">État des cotisations des membres ({annee_courante})</h3>
+                <div style="text-align: center; font-size: 1.2rem; font-weight: bold; margin: 15px 0;">Solde Caisse : <span style="color: #27ae60;">{solde} CFA</span></div>
+                
+                <h3 style="font-size:1rem; color:#2980b9; margin-top:15px;">Répartition par Poste (Daara Tinka & Général)</h3>
+                <ul>{repartition_depenses_html or '<li>Aucune dépense enregistrée.</li>'}</ul>
+
+                <h3 style="font-size:1rem; color:#2980b9; margin-top:15px;">État des cotisations des membres ({annee_courante})</h3>
                 <ul>{suivi_retards_html}</ul>
+            </div>
+
+            <div class="card">
+                <h2>Enregistrer une Dépense / Décaissement (Daara ou Association)</h2>
+                <form action="/decaissements-form" method="POST">
+                    <input type="hidden" name="user_id" value="{user['id']}">
+                    <div class="form-group"><label>Motif de la dépense :</label><input type="text" name="motif" required></div>
+                    <div class="form-group"><label>Catégorie :</label>
+                        <select name="categorie" required>
+                            <optgroup label="Daara Tinka (École Coranique)">
+                                <option value="Daara - Salaires enseignants">Daara - Salaires enseignants</option>
+                                <option value="Daara - Alimentation / Vivres">Daara - Alimentation / Vivres</option>
+                                <option value="Daara - Matériel & Équipement">Daara - Matériel & Équipement</option>
+                                <option value="Daara - Événements & Cérémonies">Daara - Événements & Cérémonies</option>
+                            </optgroup>
+                            <optgroup label="Association Générale">
+                                <option value="Association - Loyer & Charges">Association - Loyer & Charges</option>
+                                <option value="Association - Transport & Logistique">Association - Transport & Logistique</option>
+                                <option value="Association - Événements">Association - Événements</option>
+                                <option value="Divers" selected>Divers</option>
+                            </optgroup>
+                        </select>
+                    </div>
+                    <div class="form-group"><label>Montant (CFA) :</label><input type="number" name="montant" required></div>
+                    <div class="form-group"><label>Bénéficiaire :</label><input type="text" name="beneficiaire" required></div>
+                    <button type="submit" style="background-color: #c0392b;">Enregistrer la dépense</button>
+                </form>
             </div>
 
             <div class="card">
