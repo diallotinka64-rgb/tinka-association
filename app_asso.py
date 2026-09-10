@@ -6,11 +6,14 @@ import io
 import os
 import datetime
 from typing import Optional
+import bcrypt
+import qrcode
+import base64
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Association Tinka", version="9.5")
+app = FastAPI(title="API Gestion Association Tinka", version="10.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -28,7 +31,28 @@ UPLOAD_DIR = "static/uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# Redirections de secours pour éviter toute erreur 405 Method Not Allowed
+# Fonctions utilitaires pour les mots de passe sécurisés (bcrypt)
+def hacher_mdp(mdp: str) -> str:
+    return bcrypt.hashpw(mdp.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
+def verifier_mdp(mdp: str, hashed: str) -> bool:
+    try:
+        return bcrypt.checkpw(mdp.encode('utf-8'), hashed.encode('utf-8'))
+    except Exception:
+        # Rétrocompatibilité si un ancien mot de passe était en clair
+        return mdp == hashed
+
+# Générateur de QR Code en base64 pour affichage direct dans la page HTML
+def generer_qrcode_base64(url: str) -> str:
+    qr = qrcode.QRCode(box_size=4, border=2)
+    qr.add_data(url)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    buffered = io.BytesIO()
+    img.save(buffered, format="PNG")
+    return base64.b64encode(buffered.getvalue()).decode("utf-8")
+
+# Redirections de secours
 @app.get("/login-form", include_in_schema=False)
 @app.get("/login-form/", include_in_schema=False)
 def login_get_redirect():
@@ -38,13 +62,18 @@ def login_get_redirect():
 @app.post("/login-form")
 def login_form(email: str = Form(...), mot_de_passe: str = Form(...)):
     try:
-        res = supabase.table("adherents").select("*").eq("email", email).eq("mot_de_passe", mot_de_passe).execute()
+        res = supabase.table("adherents").select("*").eq("email", email).execute()
         users = res.data
         if not users:
             return HTMLResponse(content="<script>alert('Email ou mot de passe incorrect.'); window.location.href='/';</script>", status_code=401)
+        
         user = users[0]
+        # Vérification sécurisée du mot de passe haché
+        if not verifier_mdp(mot_de_passe, user['mot_de_passe']):
+            return HTMLResponse(content="<script>alert('Email ou mot de passe incorrect.'); window.location.href='/';</script>", status_code=401)
+
         if user.get('statut') != 'actif':
-            return HTMLResponse(content="<script>alert('Votre compte est en attente de validation.'); window.location.href='/';</script>", status_code=403)
+            return HTMLResponse(content="<script>alert('Votre compte est en attente de validation par l\\'administrateur.'); window.location.href='/';</script>", status_code=403)
         return RedirectResponse(url=f"/dashboard?id={user['id']}", status_code=status.HTTP_303_SEE_OTHER)
     except Exception as e:
         return HTMLResponse(content=f"<h3>Erreur de connexion Supabase :</h3><p>{str(e)}</p><a href='/'>Retour</a>", status_code=500)
@@ -63,10 +92,13 @@ async def creer_adherent_form(
             file_object.write(await file_photo.read())
         photo_path = f"/static/uploads/{file_photo.filename}"
 
+    # Hachage sécurisé du mot de passe avant insertion
+    mdp_securise = hacher_mdp(mot_de_passe)
+
     try:
         supabase.table("adherents").insert({
             "nom": nom, "prenom": prenom, "email": email, "telephone": telephone,
-            "adresse": adresse, "secteur": secteur, "photo_profil": photo_path, "mot_de_passe": mot_de_passe
+            "adresse": adresse, "secteur": secteur, "photo_profil": photo_path, "mot_de_passe": mdp_securise
         }).execute()
         return HTMLResponse(content="<script>alert('Compte créé avec succès ! En attente de validation.'); window.location.href='/';</script>")
     except Exception as e:
@@ -96,8 +128,9 @@ def changer_role(user_id: int = Form(...), adherent_id: int = Form(...), nouveau
 
 @app.post("/admin/reset-password")
 def reset_password(user_id: int = Form(...), adherent_id: int = Form(...), nouveau_mdp: str = Form(...)):
-    supabase.table("adherents").update({"mot_de_passe": nouveau_mdp}).eq("id", adherent_id).execute()
-    return HTMLResponse(content=f"<script>alert('Mot de passe réinitialisé avec succès !'); window.location.href='/dashboard?id={user_id}';</script>")
+    mdp_securise = hacher_mdp(nouveau_mdp)
+    supabase.table("adherents").update({"mot_de_passe": mdp_securise}).eq("id", adherent_id).execute()
+    return HTMLResponse(content=f"<script>alert('Mot de passe réinitialisé et sécurisé avec succès !'); window.location.href='/dashboard?id={user_id}';</script>")
 
 @app.post("/cotisations-form/")
 @app.post("/cotisations-form")
@@ -193,9 +226,65 @@ def export_cotisations_pdf(periode: Optional[str] = Query(None)):
     buffer.seek(0)
     return StreamingResponse(buffer, media_type="application/pdf", headers={"Content-Disposition": f"attachment; filename=rapport_cotisations_{periode or 'global'}.pdf"})
 
+# Route pour télécharger un reçu de paiement individuel en PDF
+@app.get("/cotisation/recu-pdf/{cotisation_id}")
+def telecharger_recu_pdf(cotisation_id: int):
+    res = supabase.table("cotisations").select("*, adherents(nom, prenom, secteur, telephone, email)").eq("id", cotisation_id).execute()
+    if not res.data:
+        return HTMLResponse("Reçu introuvable", status_code=404)
+    
+    c = res.data[0]
+    adh = c.get('adherents', {}) or {}
+
+    buffer = io.BytesIO()
+    p = canvas.Canvas(buffer, pagesize=letter)
+    width, height = letter
+
+    # En-tête du reçu
+    p.setFont("Helvetica-Bold", 16)
+    p.setFillColorRGB(0.15, 0.25, 0.35)
+    p.drawString(50, height - 50, "ASSOCIATION TINKA")
+    p.setFont("Helvetica", 10)
+    p.setFillColorRGB(0.4, 0.4, 0.4)
+    p.drawString(50, height - 68, "Reçu Officiel de Paiement de Cotisation")
+    p.setStrokeColorRGB(0.8, 0.8, 0.8)
+    p.line(50, height - 80, width - 50, height - 80)
+
+    # Informations du reçu
+    p.setFont("Helvetica-Bold", 12)
+    p.setFillColorRGB(0, 0, 0)
+    p.drawString(50, height - 120, f"Reçu N° : TK-{c['id']:04d}")
+    p.setFont("Helvetica", 11)
+    p.drawString(50, height - 145, f"Date de Paiement : {c['date_paiement'][:10]}")
+    p.drawString(50, height - 170, f"Membre : {adh.get('prenom','')} {adh.get('nom','')}")
+    p.drawString(50, height - 195, f"Secteur : {adh.get('secteur','')}")
+    p.drawString(50, height - 220, f"Téléphone : {adh.get('telephone','')}")
+
+    # Cadre montant
+    p.rect(50, height - 310, width - 100, 60, stroke=1, fill=0)
+    p.setFont("Helvetica-Bold", 14)
+    p.setFillColorRGB(0.15, 0.65, 0.35)
+    p.drawString(70, height - 265, f"Montant Versé : {c['montant']} CFA")
+    p.setFont("Helvetica", 11)
+    p.setFillColorRGB(0, 0, 0)
+    p.drawString(70, height - 285, f"Période couverte : {c['periode']} | Mode de règlement : {c['mode_paiement']}")
+
+    # Pied de page
+    p.setFont("Helvetica-Oblique", 9)
+    p.setFillColorRGB(0.5, 0.5, 0.5)
+    p.drawString(50, 100, "Ce reçu est certifié conforme par le Bureau Exécutif de l'Association Tinka.")
+
+    p.save()
+    buffer.seek(0)
+    return StreamingResponse(buffer, media_type="application/pdf", headers={"Content-Disposition": f"attachment; filename=recu_cotisation_{c['id']}.pdf"})
+
 @app.get("/", response_class=HTMLResponse)
 def afficher_portail():
-    return """
+    # Génération automatique du QR code pointant vers l'URL du site
+    url_site = "https://tinka-association.onrender.com"
+    qr_b64 = generer_qrcode_base64(url_site)
+
+    return f"""
     <!DOCTYPE html>
     <html lang="fr">
     <head>
@@ -203,22 +292,31 @@ def afficher_portail():
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Gestion Association - Tinka</title>
         <style>
-            :root { --primary: #2c3e50; --accent: #27ae60; --bg: #f8f9fa; --info: #2980b9; }
-            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: var(--bg); margin: 0; padding: 20px; color: #333; }
-            .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
-            h1 { color: var(--primary); text-align: center; margin-bottom: 25px; }
-            .card { background: #fff; border: 1px solid #e1e8ed; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
-            .card h2 { margin-top: 0; color: var(--accent); font-size: 1.2rem; border-bottom: 2px solid #f1f1f1; padding-bottom: 8px; }
-            .form-group { margin-bottom: 12px; }
-            label { display: block; margin-bottom: 4px; font-weight: 600; font-size: 0.9rem; }
-            input, select, textarea { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; }
-            button { background-color: var(--accent); color: white; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; font-size: 1rem; width: 100%; font-weight: bold; }
-            button:hover { background-color: #219653; }
+            :root {{ --primary: #2c3e50; --accent: #27ae60; --bg: #f8f9fa; --info: #2980b9; }}
+            body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: var(--bg); margin: 0; padding: 20px; color: #333; }}
+            .container {{ max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); text-align: center; }}
+            h1 {{ color: var(--primary); margin-bottom: 25px; }}
+            .card {{ background: #fff; border: 1px solid #e1e8ed; padding: 20px; border-radius: 8px; margin-bottom: 20px; text-align: left; }}
+            .card h2 {{ margin-top: 0; color: var(--accent); font-size: 1.2rem; border-bottom: 2px solid #f1f1f1; padding-bottom: 8px; }}
+            .form-group {{ margin-bottom: 12px; }}
+            label {{ display: block; margin-bottom: 4px; font-weight: 600; font-size: 0.9rem; }}
+            input, select, textarea {{ width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; }}
+            button {{ background-color: var(--accent); color: white; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; font-size: 1rem; width: 100%; font-weight: bold; }}
+            button:hover {{ background-color: #219653; }}
+            .qrcode-box {{ background: #fdfdfd; border: 2px dashed #cbd5e1; padding: 15px; border-radius: 8px; display: inline-block; margin-bottom: 20px; }}
+            .qrcode-box img {{ width: 130px; height: 130px; display: block; margin: 0 auto 8px auto; }}
         </style>
     </head>
     <body>
         <div class="container">
-            <h1>Association Tinka - Portail</h1>
+            <h1>Association Tinka - Portail Officiel</h1>
+            
+            <!-- Section QR Code -->
+            <div class="qrcode-box">
+                <img src="data:image/png;base64,{qr_b64}" alt="QR Code de connexion">
+                <span style="font-size: 0.85rem; font-weight: 600; color: #475569;">Scannez pour accéder au portail</span>
+            </div>
+
             <div class="card">
                 <h2>Connexion</h2>
                 <form action="/login-form" method="POST">
@@ -296,7 +394,8 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
             cotis_table_html = ""
             for c in cotis_affichees:
                 adh = c.get('adherents', {}) or {}
-                cotis_table_html += f"<tr><td>{adh.get('prenom','')} {adh.get('nom','')}</td><td>{adh.get('secteur','')}</td><td><b>{c['montant']} CFA</b></td><td>{c['periode']}</td><td>{c['mode_paiement']}</td></tr>"
+                btn_recu = f"<a href='/cotisation/recu-pdf/{c['id']}' target='_blank' style='background:#2980b9; color:white; padding:3px 8px; border-radius:4px; text-decoration:none; font-size:0.8rem;'>Télécharger Reçu</a>"
+                cotis_table_html += f"<tr><td>{adh.get('prenom','')} {adh.get('nom','')}</td><td>{adh.get('secteur','')}</td><td><b>{c['montant']} CFA</b></td><td>{c['periode']}</td><td>{c['mode_paiement']}</td><td>{btn_recu}</td></tr>"
 
             options_filtre_mois = "".join([f"<option value='{m}' {'selected' if filtre_periode==m else ''}>{m}</option>" for m in mois_12])
 
@@ -360,10 +459,10 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                         <a href="/cotisations/export-pdf{f'?periode={filtre_periode}' if filtre_periode else ''}" class="btn-pdf" target="_blank" style="padding:10px 15px; display:inline-block; font-size:1rem;">Exporter PDF Filtré</a>
                     </div>
                 </form>
-                <div style="max-height:200px; overflow-y:auto;">
+                <div style="max-height:220px; overflow-y:auto;">
                     <table style="width:100%; border-collapse:collapse; font-size:0.9rem;">
-                        <tr style="background:#f1f1f1; text-align:left;"><th style="padding:6px;">Membre</th><th style="padding:6px;">Secteur</th><th style="padding:6px;">Montant</th><th style="padding:6px;">Période</th><th style="padding:6px;">Mode</th></tr>
-                        {cotis_table_html or '<tr><td colspan="5" style="text-align:center; padding:10px;">Aucune cotisation trouvée pour cette période.</td></tr>'}
+                        <tr style="background:#f1f1f1; text-align:left;"><th style="padding:6px;">Membre</th><th style="padding:6px;">Secteur</th><th style="padding:6px;">Montant</th><th style="padding:6px;">Période</th><th style="padding:6px;">Mode</th><th style="padding:6px;">Reçu</th></tr>
+                        {cotis_table_html or '<tr><td colspan="6" style="text-align:center; padding:10px;">Aucune cotisation trouvée pour cette période.</td></tr>'}
                     </table>
                 </div>
             </div>
@@ -405,17 +504,23 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
 
         member_sections_html = ""
         if not is_tresorier:
-            cotis_perso = [c['periode'] for c in all_cotisations if c['adherent_id'] == user['id']]
-            mois_payes_html = "".join([f"<li>Mois de {m} : Payé</li>" for m in mois_12 if m in cotis_perso])
-            mois_retard_html = "".join([f"<li style='color:#c0392b;'>Mois de {m} : <b>Non payé</b></li>" for m in mois_12 if m not in cotis_perso])
+            cotis_perso = [c for c in all_cotisations if c['adherent_id'] == user['id']]
+            mois_payes_list = [c['periode'] for c in cotis_perso]
+            
+            mois_payes_html = ""
+            for c in cotis_perso:
+                btn_recu_perso = f"<a href='/cotisation/recu-pdf/{c['id']}' target='_blank' style='background:#2980b9; color:white; padding:2px 8px; border-radius:4px; text-decoration:none; font-size:0.75rem; margin-left:10px;'>Télécharger mon Reçu PDF</a>"
+                mois_payes_html += f"<li>Mois de {c['periode']} : Payé ({c['montant']} CFA) {btn_recu_perso}</li>"
+
+            mois_retard_html = "".join([f"<li style='color:#c0392b;'>Mois de {m} : <b>Non payé</b></li>" for m in mois_12 if m not in mois_payes_list])
             
             aides_membre_html = "".join([f"<li>Motif : {ai['motif']} ({ai['montant_demande']} CFA) - Statut : [<b>{ai['statut_validation']}</b>]</li>" for ai in all_aides if ai['adherent_id'] == user['id']])
 
             member_sections_html = f"""
             <div class="card">
-                <h2>Mon Suivi de Cotisations ({annee_courante})</h2>
-                <p>Voici l'état de vos versements mensuels :</p>
-                <ul>{mois_payes_html}{mois_retard_html}</ul>
+                <h2>Mon Suivi de Cotisations & Reçus ({annee_courante})</h2>
+                <p>Voici l'état de vos versements et vos quittances officielles :</p>
+                <ul>{mois_payes_html or '<li>Aucun versement enregistré pour le moment.</li>'}{mois_retard_html}</ul>
             </div>
 
             <div class="card">
