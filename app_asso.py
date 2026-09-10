@@ -14,7 +14,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Association Tinka", version="14.0")
+app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="15.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -188,9 +188,9 @@ def export_cotisations_pdf(periode: Optional[str] = Query(None)):
     query = supabase.table("cotisations").select("*, adherents(nom, prenom, secteur)")
     if periode:
         query = query.eq("periode", periode)
-        titre_rapport = f"Association Tinka - Rapport des Cotisations ({periode})"
+        titre_rapport = f"Tinka ka Mein Haaldi fotti - Rapport des Cotisations ({periode})"
     else:
-        titre_rapport = "Association Tinka - Rapport Global des Cotisations"
+        titre_rapport = "Tinka ka Mein Haaldi fotti - Rapport Global des Cotisations"
     
     res = query.execute()
     cotis = res.data
@@ -201,7 +201,7 @@ def export_cotisations_pdf(periode: Optional[str] = Query(None)):
 
     p.setFont("Helvetica-Bold", 14)
     p.setFillColorRGB(0.15, 0.25, 0.35)
-    p.drawString(50, height - 40, "ASSOCIATION TINKA")
+    p.drawString(50, height - 40, "TINKA KA MEIN HAALDI FOTTI")
     p.setFont("Helvetica", 9)
     p.setFillColorRGB(0.4, 0.4, 0.4)
     p.drawString(50, height - 55, "Bureau Exécutif & Conseil - Rapport Officiel")
@@ -248,7 +248,7 @@ def telecharger_recu_pdf(cotisation_id: int):
 
     p.setFont("Helvetica-Bold", 16)
     p.setFillColorRGB(0.15, 0.25, 0.35)
-    p.drawString(50, height - 50, "ASSOCIATION TINKA")
+    p.drawString(50, height - 50, "TINKA KA MEIN HAALDI FOTTI")
     p.setFont("Helvetica", 10)
     p.setFillColorRGB(0.4, 0.4, 0.4)
     p.drawString(50, height - 68, "Reçu Officiel de Paiement de Cotisation")
@@ -274,7 +274,7 @@ def telecharger_recu_pdf(cotisation_id: int):
 
     p.setFont("Helvetica-Oblique", 9)
     p.setFillColorRGB(0.5, 0.5, 0.5)
-    p.drawString(50, 100, "Ce reçu est certifié conforme par le Bureau Exécutif de l'Association Tinka.")
+    p.drawString(50, 100, "Ce reçu est certifié conforme par le Bureau Exécutif de Tinka ka Mein Haaldi fotti.")
 
     p.save()
     buffer.seek(0)
@@ -291,14 +291,14 @@ def afficher_portail():
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Gestion Association - Tinka</title>
+        <title>Tinka ka Mein Haaldi fotti</title>
         <script src="https://cdn.tailwindcss.com"></script>
     </head>
     <body class="bg-slate-50 text-slate-800 font-sans antialiased min-h-screen py-8 px-4">
         <div class="max-w-md mx-auto bg-white rounded-2xl shadow-xl p-6 sm:p-8 border border-slate-100">
             <div class="text-center mb-6">
                 <span class="inline-block bg-emerald-100 text-emerald-800 text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider mb-2">Portail Officiel</span>
-                <h1 class="text-2xl font-black text-slate-900 tracking-tight">Association Tinka</h1>
+                <h1 class="text-2xl font-black text-slate-900 tracking-tight">Tinka ka Mein Haaldi fotti</h1>
                 <p class="text-sm text-slate-500 mt-1">Gestion administrative, financière & Daara</p>
             </div>
             
@@ -343,7 +343,7 @@ def afficher_portail():
                             <input type="email" name="email" required class="w-full px-2.5 py-2 text-sm bg-white border border-slate-300 rounded-lg">
                         </div>
                         <div>
-                            <label class="block text-xs font-bold text-slate-600 mb-1">Téléphone</label>
+                            <label class="block text-xs font-bold text-slate-600 mb-1">Téléphone (ex: 221771234567)</label>
                             <input type="text" name="telephone" required class="w-full px-2.5 py-2 text-sm bg-white border border-slate-300 rounded-lg">
                         </div>
                         <div>
@@ -415,7 +415,7 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
             options_adherents = "".join([f"<option value='{a['id']}'>{a['prenom']} {a['nom']} — Secteur: {a['secteur']} (Tél: {a['telephone']})</option>" for a in all_actifs if a['role'] != 'admin'])
             
             suivi_retards_html = ""
-            relances_sms_html = ""
+            relances_whatsapp_html = ""
             for a in all_actifs:
                 cotis_membre = [c['periode'] for c in all_cotisations if c['adherent_id'] == a['id']]
                 mois_manquants = [m for m in mois_12 if m not in cotis_membre]
@@ -426,25 +426,25 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                     nb_retard = len(mois_manquants)
                     statut_ajour = f"<span class='text-red-600 font-bold'>Retard ({nb_retard} mois)</span>"
                     
-                    # Génération des messages de relance pré-remplis
-                    msg_sms = urllib.parse.quote(f"Bonjour {a['prenom']} {a['nom']}, le bureau de l'Association Tinka vous rappelle que vous avez {nb_retard} mois de cotisation en retard ({', '.join(mois_manquants)}). Merci de régulariser.")
-                    msg_email_sujet = urllib.parse.quote("Rappel - Cotisation en retard (Association Tinka)")
-                    msg_email_corps = urllib.parse.quote(f"Bonjour {a['prenom']} {a['nom']},\n\nLe bureau exécutif de l'Association Tinka vous rappelle que vous avez {nb_retard} mois de cotisation en attente de règlement ({', '.join(mois_manquants)}).\n\nMerci de bien vouloir régulariser votre situation.\n\nCordialement,\nLe Trésorier.")
+                    # Message pré-rempli pour WhatsApp
+                    msg_whatsapp = urllib.parse.quote(f"Bonjour {a['prenom']} {a['nom']}, le bureau de Tinka ka Mein Haaldi fotti vous rappelle que vous avez {nb_retard} mois de cotisation en retard ({', '.join(mois_manquants)}). Merci de régulariser.")
+                    msg_email_sujet = urllib.parse.quote("Rappel - Cotisation en retard (Tinka ka Mein Haaldi fotti)")
+                    msg_email_corps = urllib.parse.quote(f"Bonjour {a['prenom']} {a['nom']},\n\nLe bureau exécutif de Tinka ka Mein Haaldi fotti vous rappelle que vous avez {nb_retard} mois de cotisation en attente de règlement ({', '.join(mois_manquants)}).\n\nMerci de bien vouloir régulariser votre situation.\n\nCordialement,\nLe Trésorier.")
 
-                    tel = a.get('telephone', '')
+                    tel = a.get('telephone', '').replace('+', '').replace(' ', '')
                     email_dest = a.get('email', '')
 
                     boutons_relance = f"""
                     <div class="mt-2 flex gap-2 flex-wrap">
-                        <a href="sms:{tel}?body={msg_sms}" class="bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 rounded text-xs font-bold inline-flex items-center gap-1">💬 Relancer par SMS</a>
-                        <a href="mailto:{email_dest}?subject={msg_email_sujet}&body={msg_email_corps}" class="bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1 rounded text-xs font-bold inline-flex items-center gap-1">✉️ Relancer par E-mail</a>
+                        <a href="https://wa.me/{tel}?text={msg_whatsapp}" target="_blank" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold inline-flex items-center gap-1.5 shadow-sm">💚 Relancer par WhatsApp</a>
+                        <a href="mailto:{email_dest}?subject={msg_email_sujet}&body={msg_email_corps}" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold inline-flex items-center gap-1.5 shadow-sm">✉️ Relancer par E-mail</a>
                     </div>
                     """
-                    relances_sms_html += f"""
-                    <div class="bg-red-50 p-3 rounded-xl border border-red-100 mb-3 text-sm">
+                    relances_whatsapp_html += f"""
+                    <div class="bg-red-50 p-4 rounded-xl border border-red-100 mb-3 text-sm">
                         <div class="flex justify-between items-center">
-                            <div><b>{a['prenom']} {a['nom']}</b> <span class='text-xs text-slate-500'>({a['secteur']} - {tel})</span></div>
-                            <span class="text-red-700 font-bold text-xs bg-red-100 px-2 py-0.5 rounded-full">{nb_retard} mois manquant(s)</span>
+                            <div><b>{a['prenom']} {a['nom']}</b> <span class='text-xs text-slate-500'>({a['secteur']} - +{tel})</span></div>
+                            <span class="text-red-700 font-bold text-xs bg-red-100 px-2.5 py-1 rounded-full">{nb_retard} mois manquant(s)</span>
                         </div>
                         <div class="text-xs text-slate-600 mt-1">Mois en retard : {', '.join(mois_manquants)}</div>
                         {boutons_relance}
@@ -517,10 +517,10 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
             </div>
 
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
-                <h2 class="text-lg font-bold text-amber-600 mb-2 border-b pb-2">📢 Centre de Relances (SMS & E-mails)</h2>
-                <p class="text-xs text-slate-500 mb-4">Cliquez pour envoyer instantanément un rappel de cotisation pré-rempli aux membres en retard.</p>
+                <h2 class="text-lg font-bold text-emerald-700 mb-2 border-b pb-2">📢 Centre de Relances (WhatsApp & E-mails)</h2>
+                <p class="text-xs text-slate-500 mb-4">Cliquez pour envoyer instantanément un rappel WhatsApp ou e-mail pré-rempli aux membres en retard.</p>
                 <div class="max-h-80 overflow-y-auto pr-1">
-                    {relances_sms_html or '<div class="text-sm text-emerald-600 font-semibold p-3 bg-emerald-50 rounded-xl text-center">🎉 Aucun membre en retard pour le moment ! Tout le monde est à jour.</div>'}
+                    {relances_whatsapp_html or '<div class="text-sm text-emerald-600 font-semibold p-3 bg-emerald-50 rounded-xl text-center">🎉 Aucun membre en retard pour le moment ! Tout le monde est à jour.</div>'}
                 </div>
             </div>
 
@@ -694,14 +694,14 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Tableau de bord - Association Tinka</title>
+            <title>Tableau de bord - Tinka ka Mein Haaldi fotti</title>
             <script src="https://cdn.tailwindcss.com"></script>
         </head>
         <body class="bg-slate-50 text-slate-800 font-sans antialiased min-h-screen py-6 px-4">
             <div class="max-w-4xl mx-auto">
                 <header class="text-center mb-8">
                     <span class="text-xs font-bold text-emerald-700 bg-emerald-100 px-3 py-1 rounded-full uppercase tracking-wider">Espace Membre & Bureau</span>
-                    <h1 class="text-2xl sm:text-3xl font-black text-slate-900 mt-2">Association Tinka</h1>
+                    <h1 class="text-2xl sm:text-3xl font-black text-slate-900 mt-2">Tinka ka Mein Haaldi fotti</h1>
                 </header>
 
                 <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6 flex flex-col sm:flex-row items-center gap-4 justify-between">
