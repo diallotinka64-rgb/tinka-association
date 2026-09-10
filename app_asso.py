@@ -13,7 +13,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Association Tinka", version="12.0")
+app = FastAPI(title="API Gestion Association Tinka", version="13.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -291,50 +291,79 @@ def afficher_portail():
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Gestion Association - Tinka</title>
-        <style>
-            :root {{ --primary: #2c3e50; --accent: #27ae60; --bg: #f8f9fa; --info: #2980b9; }}
-            body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: var(--bg); margin: 0; padding: 20px; color: #333; }}
-            .container {{ max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); text-align: center; }}
-            h1 {{ color: var(--primary); margin-bottom: 25px; }}
-            .card {{ background: #fff; border: 1px solid #e1e8ed; padding: 20px; border-radius: 8px; margin-bottom: 20px; text-align: left; }}
-            .card h2 {{ margin-top: 0; color: var(--accent); font-size: 1.2rem; border-bottom: 2px solid #f1f1f1; padding-bottom: 8px; }}
-            .form-group {{ margin-bottom: 12px; }}
-            label {{ display: block; margin-bottom: 4px; font-weight: 600; font-size: 0.9rem; }}
-            input, select, textarea {{ width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; }}
-            button {{ background-color: var(--accent); color: white; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; font-size: 1rem; width: 100%; font-weight: bold; }}
-            button:hover {{ background-color: #219653; }}
-            .qrcode-box {{ background: #fdfdfd; border: 2px dashed #cbd5e1; padding: 15px; border-radius: 8px; display: inline-block; margin-bottom: 20px; }}
-            .qrcode-box img {{ width: 130px; height: 130px; display: block; margin: 0 auto 8px auto; }}
-        </style>
+        <script src="https://cdn.tailwindcss.com"></script>
     </head>
-    <body>
-        <div class="container">
-            <h1>Association Tinka - Portail Officiel</h1>
-            <div class="qrcode-box">
-                <img src="data:image/png;base64,{qr_b64}" alt="QR Code de connexion">
-                <span style="font-size: 0.85rem; font-weight: 600; color: #475569;">Scannez pour accéder au portail</span>
+    <body class="bg-slate-50 text-slate-800 font-sans antialiased min-h-screen py-8 px-4">
+        <div class="max-w-md mx-auto bg-white rounded-2xl shadow-xl p-6 sm:p-8 border border-slate-100">
+            <div class="text-center mb-6">
+                <span class="inline-block bg-emerald-100 text-emerald-800 text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider mb-2">Portail Officiel</span>
+                <h1 class="text-2xl font-black text-slate-900 tracking-tight">Association Tinka</h1>
+                <p class="text-sm text-slate-500 mt-1">Gestion administrative, financière & Daara</p>
             </div>
-            <div class="card">
-                <h2>Connexion</h2>
-                <form action="/login-form" method="POST">
-                    <div class="form-group"><label>Email :</label><input type="email" name="email" required></div>
-                    <div class="form-group"><label>Mot de passe :</label><input type="password" name="mot_de_passe" required></div>
-                    <button type="submit" style="background-color: var(--info);">Se connecter</button>
-                </form>
+            
+            <div class="flex justify-center mb-6">
+                <div class="bg-white p-3 rounded-xl border-2 border-dashed border-slate-200 shadow-sm text-center">
+                    <img src="data:image/png;base64,{qr_b64}" alt="QR Code" class="w-32 h-32 mx-auto mb-2 rounded">
+                    <span class="text-xs font-semibold text-slate-600">Scannez pour vous connecter</span>
+                </div>
             </div>
-            <div class="card">
-                <h2>Inscription d'un Nouvel Adhérent</h2>
-                <form action="/adherents-form" method="POST" enctype="multipart/form-data">
-                    <div class="form-group"><label>Nom :</label><input type="text" name="nom" required></div>
-                    <div class="form-group"><label>Prénom :</label><input type="text" name="prenom" required></div>
-                    <div class="form-group"><label>Email :</label><input type="email" name="email" required></div>
-                    <div class="form-group"><label>Téléphone :</label><input type="text" name="telephone" required></div>
-                    <div class="form-group"><label>Adresse :</label><input type="text" name="adresse" required></div>
-                    <div class="form-group"><label>Secteur :</label><input type="text" name="secteur" required></div>
-                    <div class="form-group"><label>Photo de profil (PC ou Téléphone) :</label><input type="file" name="file_photo" accept="image/*"></div>
-                    <div class="form-group"><label>Mot de passe :</label><input type="password" name="mot_de_passe" required></div>
-                    <button type="submit">S'inscrire</button>
-                </form>
+
+            <div class="space-y-6">
+                <div class="bg-slate-50 p-5 rounded-xl border border-slate-200">
+                    <h2 class="text-base font-bold text-slate-800 mb-4 flex items-center gap-2">🔐 Connexion</h2>
+                    <form action="/login-form" method="POST" class="space-y-4">
+                        <div>
+                            <label class="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">Email</label>
+                            <input type="email" name="email" required class="w-full px-3 py-2.5 text-sm bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">Mot de passe</label>
+                            <input type="password" name="mot_de_passe" required class="w-full px-3 py-2.5 text-sm bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+                        </div>
+                        <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-4 rounded-lg shadow transition duration-200 text-sm">Se connecter</button>
+                    </form>
+                </div>
+
+                <div class="bg-slate-50 p-5 rounded-xl border border-slate-200">
+                    <h2 class="text-base font-bold text-emerald-700 mb-4 flex items-center gap-2">📝 Nouvel Adhérent</h2>
+                    <form action="/adherents-form" method="POST" enctype="multipart/form-data" class="space-y-3">
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-600 mb-1">Nom</label>
+                                <input type="text" name="nom" required class="w-full px-2.5 py-2 text-sm bg-white border border-slate-300 rounded-lg">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-600 mb-1">Prénom</label>
+                                <input type="text" name="prenom" required class="w-full px-2.5 py-2 text-sm bg-white border border-slate-300 rounded-lg">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-600 mb-1">Email</label>
+                            <input type="email" name="email" required class="w-full px-2.5 py-2 text-sm bg-white border border-slate-300 rounded-lg">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-600 mb-1">Téléphone</label>
+                            <input type="text" name="telephone" required class="w-full px-2.5 py-2 text-sm bg-white border border-slate-300 rounded-lg">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-600 mb-1">Adresse</label>
+                            <input type="text" name="adresse" required class="w-full px-2.5 py-2 text-sm bg-white border border-slate-300 rounded-lg">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-600 mb-1">Secteur</label>
+                            <input type="text" name="secteur" required class="w-full px-2.5 py-2 text-sm bg-white border border-slate-300 rounded-lg">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-600 mb-1">Photo de profil</label>
+                            <input type="file" name="file_photo" accept="image/*" class="w-full text-xs text-slate-500 file:mr-2 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-600 mb-1">Mot de passe</label>
+                            <input type="password" name="mot_de_passe" required class="w-full px-2.5 py-2 text-sm bg-white border border-slate-300 rounded-lg">
+                        </div>
+                        <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-4 rounded-lg shadow transition duration-200 text-sm mt-2">S'inscrire</button>
+                    </form>
+                </div>
             </div>
         </div>
     </body>
@@ -388,14 +417,14 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
             for a in all_actifs:
                 cotis_membre = [c['periode'] for c in all_cotisations if c['adherent_id'] == a['id']]
                 mois_manquants = [m for m in mois_12 if m not in cotis_membre]
-                statut_ajour = "<span style='color: #27ae60; font-weight:bold;'>À jour</span>" if not mois_manquants else f"<span style='color: #c0392b;'>Retard ({len(mois_manquants)} mois)</span>"
-                suivi_retards_html += f"<li><b>{a['prenom']} {a['nom']}</b> (Secteur: {a['secteur']} | Tél: {a['telephone']}) : {statut_ajour}</li>"
+                statut_ajour = "<span class='text-emerald-600 font-bold'>À jour</span>" if not mois_manquants else f"<span class='text-red-600 font-bold'>Retard ({len(mois_manquants)} mois)</span>"
+                suivi_retards_html += f"<li class='py-1.5 border-b border-slate-100 flex justify-between items-center text-sm'><span><b>{a['prenom']} {a['nom']}</b> <span class='text-xs text-slate-400'>({a['secteur']})</span></span> {statut_ajour}</li>"
 
             cotis_table_html = ""
             for c in cotis_affichees:
                 adh = c.get('adherents', {}) or {}
-                btn_recu = f"<a href='/cotisation/recu-pdf/{c['id']}' target='_blank' style='background:#2980b9; color:white; padding:3px 8px; border-radius:4px; text-decoration:none; font-size:0.8rem;'>Télécharger Reçu</a>"
-                cotis_table_html += f"<tr><td>{adh.get('prenom','')} {adh.get('nom','')}</td><td>{adh.get('secteur','')}</td><td><b>{c['montant']} CFA</b></td><td>{c['periode']}</td><td>{c['mode_paiement']}</td><td>{btn_recu}</td></tr>"
+                btn_recu = f"<a href='/cotisation/recu-pdf/{c['id']}' target='_blank' class='bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1 rounded text-xs font-semibold'>Reçu PDF</a>"
+                cotis_table_html += f"<tr class='hover:bg-slate-50'><td class='p-2.5 font-medium'>{adh.get('prenom','')} {adh.get('nom','')}</td><td class='p-2.5 text-slate-600'>{adh.get('secteur','')}</td><td class='p-2.5 font-bold text-emerald-600'>{c['montant']} CFA</td><td class='p-2.5 text-slate-600'>{c['periode']}</td><td class='p-2.5 text-slate-600'>{c['mode_paiement']}</td><td class='p-2.5'>{btn_recu}</td></tr>"
 
             options_filtre_mois = "".join([f"<option value='{m}' {'selected' if filtre_periode==m else ''}>{m}</option>" for m in mois_12])
 
@@ -406,61 +435,62 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
             
             repartition_depenses_html = ""
             for cat, montant_cat in categories_dict.items():
-                repartition_depenses_html += f"<li><b>{cat}</b> : {montant_cat} CFA</li>"
+                repartition_depenses_html += f"<li class='flex justify-between py-1 text-sm border-b border-slate-100'><span>{cat}</span><span class='font-bold text-red-600'>{montant_cat} CFA</span></li>"
 
             adherents_gestion_html = ""
             for a in all_adherents:
                 actions = ""
                 if a['statut'] == 'en_attente':
                     actions += f"""
-                    <form action="/admin/valider-adherent" method="POST" style="display:inline; margin-left:5px;">
+                    <form action="/admin/valider-adherent" method="POST" class="inline ml-2">
                         <input type="hidden" name="user_id" value="{user['id']}"><input type="hidden" name="adherent_id" value="{a['id']}">
-                        <button type="submit" style="background:#27ae60; padding:2px 8px; font-size:0.75rem; width:auto;">Valider</button>
+                        <button type="submit" class="bg-emerald-600 text-white px-2 py-0.5 rounded text-xs">Valider</button>
                     </form>"""
                 if is_admin:
                     actions += f"""
-                    <form action="/admin/changer-role" method="POST" style="display:inline-block; margin-left:5px;">
+                    <form action="/admin/changer-role" method="POST" class="inline-block ml-2">
                         <input type="hidden" name="user_id" value="{user['id']}"><input type="hidden" name="adherent_id" value="{a['id']}">
-                        <select name="nouveau_role" onchange="this.form.submit()" style="padding:2px; font-size:0.75rem; width:auto; display:inline-block;">
+                        <select name="nouveau_role" onchange="this.form.submit()" class="p-1 text-xs border rounded bg-white">
                             <option value="membre" {'selected' if a['role']=='membre' else ''}>Membre</option>
                             <option value="tresorier" {'selected' if a['role']=='tresorier' else ''}>Trésorier</option>
                             <option value="admin" {'selected' if a['role']=='admin' else ''}>Admin</option>
                         </select>
                     </form>
-                    <form action="/admin/reset-password" method="POST" style="display:inline-block; margin-left:5px; margin-top:5px;">
+                    <form action="/admin/reset-password" method="POST" class="inline-block ml-2 mt-1">
                         <input type="hidden" name="user_id" value="{user['id']}">
                         <input type="hidden" name="adherent_id" value="{a['id']}">
-                        <input type="text" name="nouveau_mdp" placeholder="Nouveau mdp" required style="width:100px; padding:2px; display:inline-block; font-size:0.75rem;">
-                        <button type="submit" style="background:#d35400; padding:2px 5px; font-size:0.7rem; width:auto;">Réinitialiser MDP</button>
+                        <input type="text" name="nouveau_mdp" placeholder="Nouveau mdp" required class="w-24 p-1 text-xs border rounded inline-block">
+                        <button type="submit" class="bg-amber-600 text-white px-2 py-0.5 rounded text-xs">Reset MDP</button>
                     </form>"""
 
-                photo_tag = f"<img src='{a['photo_profil']}' style='width:30px; height:30px; border-radius:50%; object-fit:cover; vertical-align:middle; margin-right:8px;' onerror='this.style.display=\"none\"'>" if a['photo_profil'] else ""
-                adherents_gestion_html += f"<li>{photo_tag}<b>{a['prenom']} {a['nom']}</b> — <em>{a['secteur']}</em> (Tél: {a['telephone']}) [Statut: <b>{a['statut']}</b> | Rôle: {a['role']}] {actions}</li>"
+                photo_tag = f"<img src='{a['photo_profil']}' class='w-8 h-8 rounded-full object-cover inline-block mr-2' onerror='this.style.display=\"none\"'>" if a['photo_profil'] else ""
+                adherents_gestion_html += f"<li class='py-2 border-b border-slate-100 text-sm flex items-center justify-between flex-wrap gap-2'><div>{photo_tag}<b>{a['prenom']} {a['nom']}</b> <span class='text-xs text-slate-500'>({a['secteur']} - {a['telephone']})</span> [Statut: <b>{a['statut']}</b> | Rôle: {a['role']}]</div><div>{actions}</div></li>"
 
             finance_sections_html = f"""
-            <div class="card">
-                <h2>Trésorerie Globale & Suivi des Dépenses</h2>
-                <div class="dashboard-box">
-                    <div>Total Cotisations : {total_cotis} CFA</div>
-                    <div>Aides Versées : {total_aides_approuvees} CFA</div>
-                    <div>Total Dépenses : {total_dec} CFA</div>
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
+                <h2 class="text-lg font-bold text-emerald-700 mb-4 border-b pb-2">💰 Trésorerie Globale & Suivi</h2>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4 text-center">
+                    <div class="bg-emerald-50 p-3 rounded-xl border border-emerald-100"><span class="block text-xs text-emerald-600 font-bold uppercase">Cotisations</span><span class="text-lg font-black text-emerald-800">{total_cotis} CFA</span></div>
+                    <div class="bg-amber-50 p-3 rounded-xl border border-amber-100"><span class="block text-xs text-amber-600 font-bold uppercase">Aides Versées</span><span class="text-lg font-black text-amber-800">{total_aides_approuvees} CFA</span></div>
+                    <div class="bg-red-50 p-3 rounded-xl border border-red-100"><span class="block text-xs text-red-600 font-bold uppercase">Dépenses</span><span class="text-lg font-black text-red-800">{total_dec} CFA</span></div>
                 </div>
-                <div style="text-align: center; font-size: 1.2rem; font-weight: bold; margin: 15px 0;">Solde Caisse : <span style="color: #27ae60;">{solde} CFA</span></div>
+                <div class="text-center bg-slate-900 text-white py-3 rounded-xl font-bold text-lg mb-6">Solde en Caisse : <span class="text-emerald-400">{solde} CFA</span></div>
                 
-                <h3 style="font-size:1rem; color:#2980b9; margin-top:15px;">Répartition par Poste (Daara Tinka & Général)</h3>
-                <ul>{repartition_depenses_html or '<li>Aucune dépense enregistrée.</li>'}</ul>
+                <h3 class="text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Répartition des Dépenses (Daara & Général)</h3>
+                <ul class="mb-6">{repartition_depenses_html or '<li class="text-sm text-slate-400">Aucune dépense enregistrée.</li>'}</ul>
 
-                <h3 style="font-size:1rem; color:#2980b9; margin-top:15px;">État des cotisations des membres ({annee_courante})</h3>
-                <ul>{suivi_retards_html}</ul>
+                <h3 class="text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">État des cotisations ({annee_courante})</h3>
+                <ul class="max-h-60 overflow-y-auto pr-2">{suivi_retards_html}</ul>
             </div>
 
-            <div class="card">
-                <h2>Enregistrer une Dépense / Décaissement (Daara ou Association)</h2>
-                <form action="/decaissements-form" method="POST">
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
+                <h2 class="text-lg font-bold text-red-600 mb-4 border-b pb-2">📉 Enregistrer une Dépense</h2>
+                <form action="/decaissements-form" method="POST" class="space-y-4">
                     <input type="hidden" name="user_id" value="{user['id']}">
-                    <div class="form-group"><label>Motif de la dépense :</label><input type="text" name="motif" required></div>
-                    <div class="form-group"><label>Catégorie :</label>
-                        <select name="categorie" required>
+                    <div><label class="block text-xs font-bold text-slate-600 mb-1">Motif</label><input type="text" name="motif" required class="w-full p-2.5 border rounded-lg text-sm"></div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">Catégorie</label>
+                        <select name="categorie" required class="w-full p-2.5 border rounded-lg text-sm bg-white">
                             <optgroup label="Daara Tinka (École Coranique)">
                                 <option value="Daara - Salaires enseignants">Daara - Salaires enseignants</option>
                                 <option value="Daara - Alimentation / Vivres">Daara - Alimentation / Vivres</option>
@@ -475,95 +505,86 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                             </optgroup>
                         </select>
                     </div>
-                    <div class="form-group"><label>Montant (CFA) :</label><input type="number" name="montant" required></div>
-                    <div class="form-group"><label>Bénéficiaire :</label><input type="text" name="beneficiaire" required></div>
-                    <button type="submit" style="background-color: #c0392b;">Enregistrer la dépense</button>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Montant (CFA)</label><input type="number" name="montant" required class="w-full p-2.5 border rounded-lg text-sm"></div>
+                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Bénéficiaire</label><input type="text" name="beneficiaire" required class="w-full p-2.5 border rounded-lg text-sm"></div>
+                    </div>
+                    <button type="submit" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2.5 rounded-lg text-sm">Enregistrer la dépense</button>
                 </form>
             </div>
 
-            <div class="card">
-                <h2>Filtrage et Consultation des Cotisations</h2>
-                <form method="GET" action="/dashboard" style="display:flex; gap:10px; margin-bottom:15px; align-items:flex-end;">
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
+                <h2 class="text-lg font-bold text-blue-600 mb-4 border-b pb-2">🔍 Filtrage & Cotisations</h2>
+                <form method="GET" action="/dashboard" class="flex flex-col sm:flex-row gap-3 items-end mb-4">
                     <input type="hidden" name="id" value="{user['id']}">
-                    <div style="flex:1;" class="form-group" style="margin:0;">
-                        <label>Filtrer par Mois :</label>
-                        <select name="filtre_periode">
-                            <option value="">-- Tous les mois --</option>
-                            {options_filtre_mois}
-                        </select>
-                    </div>
-                    <div>
-                        <button type="submit" style="background:#2980b9; padding:9px 15px;">Filtrer</button>
-                    </div>
-                    <div>
-                        <a href="/cotisations/export-pdf{f'?periode={filtre_periode}' if filtre_periode else ''}" class="btn-pdf" target="_blank" style="padding:10px 15px; display:inline-block; font-size:1rem;">Exporter PDF Filtré</a>
+                    <div class="w-full sm:flex-1"><label class="block text-xs font-bold text-slate-600 mb-1">Filtrer par Mois</label><select name="filtre_periode" class="w-full p-2.5 border rounded-lg text-sm bg-white"><option value="">-- Tous les mois --</option>{options_filtre_mois}</select></div>
+                    <div class="flex gap-2 w-full sm:w-auto">
+                        <button type="submit" class="flex-1 sm:flex-initial bg-blue-600 text-white px-4 py-2.5 rounded-lg text-sm font-bold">Filtrer</button>
+                        <a href="/cotisations/export-pdf{f'?periode={filtre_periode}' if filtre_periode else ''}" target="_blank" class="flex-1 sm:flex-initial bg-slate-700 hover:bg-slate-800 text-white px-4 py-2.5 rounded-lg text-sm font-bold text-center">Export PDF</a>
                     </div>
                 </form>
-                <div style="max-height:220px; overflow-y:auto;">
-                    <table style="width:100%; border-collapse:collapse; font-size:0.9rem;">
-                        <tr style="background:#f1f1f1; text-align:left;"><th style="padding:6px;">Membre</th><th style="padding:6px;">Secteur</th><th style="padding:6px;">Montant</th><th style="padding:6px;">Période</th><th style="padding:6px;">Mode</th><th style="padding:6px;">Reçu</th></tr>
-                        {cotis_table_html or '<tr><td colspan="6" style="text-align:center; padding:10px;">Aucune cotisation trouvée pour cette période.</td></tr>'}
+                <div class="overflow-x-auto max-h-60">
+                    <table class="w-full text-left text-sm border-collapse">
+                        <thead><tr class="bg-slate-100 text-slate-600 text-xs uppercase"><th class="p-2.5">Membre</th><th class="p-2.5">Secteur</th><th class="p-2.5">Montant</th><th class="p-2.5">Période</th><th class="p-2.5">Mode</th><th class="p-2.5">Reçu</th></tr></thead>
+                        <tbody>{cotis_table_html or '<tr><td colspan="6" class="text-center p-4 text-slate-400">Aucune cotisation trouvée.</td></tr>'}</tbody>
                     </table>
                 </div>
             </div>
 
-            <div class="card">
-                <h2>Gestion des Adhérents & Réinitialisation des Mots de Passe</h2>
-                <ul>{adherents_gestion_html}</ul>
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
+                <h2 class="text-lg font-bold text-slate-700 mb-4 border-b pb-2">👥 Gestion des Adhérents</h2>
+                <ul class="max-h-60 overflow-y-auto pr-2">{adherents_gestion_html}</ul>
             </div>
 
-            <div class="card">
-                <h2>Enregistrer une Cotisation</h2>
-                <form action="/cotisations-form" method="POST">
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
+                <h2 class="text-lg font-bold text-purple-600 mb-4 border-b pb-2">➕ Enregistrer une Cotisation</h2>
+                <form action="/cotisations-form" method="POST" class="space-y-4">
                     <input type="hidden" name="user_id" value="{user['id']}">
-                    <div class="form-group"><label>Adhérent :</label><select name="adherent_id" required><option value="">-- Choisir --</option>{options_adherents}</select></div>
-                    <div class="form-group"><label>Montant (CFA) :</label><input type="number" name="montant" required></div>
-                    <div class="form-group"><label>Période (Mois) :</label><select name="periode" required>{"".join([f"<option value='{m}'>{m}</option>" for m in mois_12])}</select></div>
-                    <div class="form-group"><label>Mode de paiement :</label><select name="mode_paiement"><option value="especes">Espèces</option><option value="mobile_money">Mobile Money</option><option value="virement">Virement</option></select></div>
-                    <button type="submit" style="background-color: #8e44ad;">Valider la cotisation</button>
+                    <div><label class="block text-xs font-bold text-slate-600 mb-1">Adhérent</label><select name="adherent_id" required class="w-full p-2.5 border rounded-lg text-sm bg-white"><option value="">-- Choisir --</option>{options_adherents}</select></div>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Montant (CFA)</label><input type="number" name="montant" required class="w-full p-2.5 border rounded-lg text-sm"></div>
+                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Période (Mois)</label><select name="periode" required class="w-full p-2.5 border rounded-lg text-sm bg-white">{"".join([f"<option value='{m}'>{m}</option>" for m in mois_12])}</select></div>
+                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Mode</label><select name="mode_paiement" class="w-full p-2.5 border rounded-lg text-sm bg-white"><option value="especes">Espèces</option><option value="mobile_money">Mobile Money</option><option value="virement">Virement</option></select></div>
+                    </div>
+                    <button type="submit" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2.5 rounded-lg text-sm">Valider la cotisation</button>
                 </form>
             </div>
 
-            <div class="card">
-                <h2>Planifier un Événement ou une Réunion (AG, Daara, Bureau)</h2>
-                <form action="/evenements-form" method="POST">
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
+                <h2 class="text-lg font-bold text-emerald-600 mb-4 border-b pb-2">📅 Planifier un Événement / Réunion</h2>
+                <form action="/evenements-form" method="POST" class="space-y-4">
                     <input type="hidden" name="user_id" value="{user['id']}">
-                    <div class="form-group"><label>Titre de l'événement :</label><input type="text" name="titre" required></div>
-                    <div class="form-group"><label>Description / Ordre du jour :</label><textarea name="description" rows="2" required></textarea></div>
-                    <div class="form-group"><label>Date et Heure :</label><input type="datetime-local" name="date_evenement" required></div>
-                    <div class="form-group"><label>Lieu :</label><input type="text" name="lieu" required></div>
-                    <div class="form-group"><label>Type d'événement :</label>
-                        <select name="type_evenement">
-                            <option value="Assemblee Generale">Assemblée Générale</option>
-                            <option value="Reunion Bureau">Réunion du Bureau</option>
-                            <option value="Evenement Daara">Événement Daara Tinka</option>
-                            <option value="Ceremonie">Cérémonie / Autre</option>
-                        </select>
+                    <div><label class="block text-xs font-bold text-slate-600 mb-1">Titre</label><input type="text" name="titre" required class="w-full p-2.5 border rounded-lg text-sm"></div>
+                    <div><label class="block text-xs font-bold text-slate-600 mb-1">Description / Ordre du jour</label><textarea name="description" rows="2" required class="w-full p-2.5 border rounded-lg text-sm"></textarea></div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Date et Heure</label><input type="datetime-local" name="date_evenement" required class="w-full p-2.5 border rounded-lg text-sm"></div>
+                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Lieu</label><input type="text" name="lieu" required class="w-full p-2.5 border rounded-lg text-sm"></div>
                     </div>
-                    <div class="form-group"><label>Statut :</label>
-                        <select name="statut">
-                            <option value="prevu" selected>Prévu</option>
-                            <option value="en_cours">En cours</option>
-                            <option value="termine">Terminé</option>
-                        </select>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Type</label><select name="type_evenement" class="w-full p-2.5 border rounded-lg text-sm bg-white"><option value="Assemblee Generale">Assemblée Générale</option><option value="Reunion Bureau">Réunion du Bureau</option><option value="Evenement Daara">Événement Daara Tinka</option><option value="Ceremonie">Cérémonie</option></select></div>
+                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Statut</label><select name="statut" class="w-full p-2.5 border rounded-lg text-sm bg-white"><option value="prevu" selected>Prévu</option><option value="en_cours">En cours</option><option value="termine">Terminé</option></select></div>
                     </div>
-                    <button type="submit" style="background-color: #27ae60;">Programmer l'événement</button>
+                    <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-lg text-sm">Programmer l'événement</button>
                 </form>
             </div>
 
             {f'''
-            <div class="card">
-                <h2>Ajouter un Projet au Bureau (Planification)</h2>
-                <form action="/projets-form" method="POST" enctype="multipart/form-data">
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
+                <h2 class="text-lg font-bold text-indigo-600 mb-4 border-b pb-2">🚀 Ajouter un Projet (Bureau)</h2>
+                <form action="/projets-form" method="POST" enctype="multipart/form-data" class="space-y-4">
                     <input type="hidden" name="user_id" value="{user['id']}">
-                    <div class="form-group"><label>Titre :</label><input type="text" name="titre" required></div>
-                    <div class="form-group"><label>Description :</label><textarea name="description" rows="2"></textarea></div>
-                    <div class="form-group"><label>Objectifs :</label><textarea name="objectifs" rows="2"></textarea></div>
-                    <div class="form-group"><label>Coût Prévu (CFA) :</label><input type="number" name="cout" required></div>
-                    <div class="form-group"><label>Photo du projet (PC/Téléphone) :</label><input type="file" name="file_projet" accept="image/*"></div>
-                    <div class="form-group"><label>Chronologie :</label><select name="chronologie"><option value="passe">Passé</option><option value="actuel" selected>Actuel</option><option value="avenir">À venir</option></select></div>
-                    <div class="form-group"><label>Statut :</label><select name="statut"><option value="planifie">Planifié</option><option value="en_cours">En cours</option><option value="termine">Terminé</option></select></div>
-                    <button type="submit" style="background-color: #2980b9;">Ajouter le projet</button>
+                    <div><label class="block text-xs font-bold text-slate-600 mb-1">Titre</label><input type="text" name="titre" required class="w-full p-2.5 border rounded-lg text-sm"></div>
+                    <div><label class="block text-xs font-bold text-slate-600 mb-1">Description</label><textarea name="description" rows="2" class="w-full p-2.5 border rounded-lg text-sm"></textarea></div>
+                    <div><label class="block text-xs font-bold text-slate-600 mb-1">Objectifs</label><textarea name="objectifs" rows="2" class="w-full p-2.5 border rounded-lg text-sm"></textarea></div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Coût Prévu (CFA)</label><input type="number" name="cout" required class="w-full p-2.5 border rounded-lg text-sm"></div>
+                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Photo du projet</label><input type="file" name="file_projet" accept="image/*" class="w-full text-xs text-slate-500 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:text-indigo-700"></div>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Chronologie</label><select name="chronologie" class="w-full p-2.5 border rounded-lg text-sm bg-white"><option value="passe">Passé</option><option value="actuel" selected>Actuel</option><option value="avenir">À venir</option></select></div>
+                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Statut</label><select name="statut" class="w-full p-2.5 border rounded-lg text-sm bg-white"><option value="planifie">Planifié</option><option value="en_cours">En cours</option><option value="termine">Terminé</option></select></div>
+                    </div>
+                    <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-lg text-sm">Ajouter le projet</button>
                 </form>
             </div>
             ''' if is_admin else ''}
@@ -576,30 +597,28 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
             
             mois_payes_html = ""
             for c in cotis_perso:
-                btn_recu_perso = f"<a href='/cotisation/recu-pdf/{c['id']}' target='_blank' style='background:#2980b9; color:white; padding:2px 8px; border-radius:4px; text-decoration:none; font-size:0.75rem; margin-left:10px;'>Télécharger mon Reçu PDF</a>"
-                mois_payes_html += f"<li>Mois de {c['periode']} : Payé ({c['montant']} CFA) {btn_recu_perso}</li>"
+                btn_recu_perso = f"<a href='/cotisation/recu-pdf/{c['id']}' target='_blank' class='bg-blue-600 text-white px-2.5 py-1 rounded text-xs font-semibold inline-block ml-2'>Télécharger Reçu PDF</a>"
+                mois_payes_html += f"<li class='py-2 border-b border-slate-100 text-sm flex justify-between items-center'><span>Mois de <b>{c['periode']}</b> : <span class='text-emerald-600 font-bold'>Payé ({c['montant']} CFA)</span></span> {btn_recu_perso}</li>"
 
-            mois_retard_html = "".join([f"<li style='color:#c0392b;'>Mois de {m} : <b>Non payé</b></li>" for m in mois_12 if m not in mois_payes_list])
+            mois_retard_html = "".join([f"<li class='py-2 border-b border-slate-100 text-sm flex justify-between items-center'><span>Mois de {m}</span> <span class='text-red-600 font-bold'>Non payé</span></li>" for m in mois_12 if m not in mois_payes_list])
             
-            aides_membre_html = "".join([f"<li>Motif : {ai['motif']} ({ai['montant_demande']} CFA) - Statut : [<b>{ai['statut_validation']}</b>]</li>" for ai in all_aides if ai['adherent_id'] == user['id']])
+            aides_membre_html = "".join([f"<li class='py-2 border-b border-slate-100 text-sm'>Motif : <b>{ai['motif']}</b> ({ai['montant_demande']} CFA) — Statut : <span class='font-bold text-amber-600'>{ai['statut_validation']}</span></li>" for ai in all_aides if ai['adherent_id'] == user['id']])
 
             member_sections_html = f"""
-            <div class="card">
-                <h2>Mon Suivi de Cotisations & Reçus ({annee_courante})</h2>
-                <p>Voici l'état de vos versements et vos quittances officielles :</p>
-                <ul>{mois_payes_html or '<li>Aucun versement enregistré pour le moment.</li>'}{mois_retard_html}</ul>
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
+                <h2 class="text-lg font-bold text-emerald-700 mb-4 border-b pb-2">📋 Mon Suivi de Cotisations ({annee_courante})</h2>
+                <ul class="max-h-60 overflow-y-auto">{mois_payes_html or '<li class="text-sm text-slate-400">Aucun versement enregistré.</li>'}{mois_retard_html}</ul>
             </div>
 
-            <div class="card">
-                <h2>Mes Demandes d'Aide</h2>
-                <ul>{aides_membre_html or '<li>Aucune demande soumise.</li>'}</ul>
-                <hr style="border:0; border-top:1px solid #eee; margin:15px 0;">
-                <h3 style="font-size:1rem; color:#2980b9;">Faire une nouvelle demande d'aide</h3>
-                <form action="/aides-form" method="POST">
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
+                <h2 class="text-lg font-bold text-amber-600 mb-4 border-b pb-2">🤝 Mes Demandes d'Aide</h2>
+                <ul class="mb-6">{aides_membre_html or '<li class="text-sm text-slate-400">Aucune demande soumise.</li>'}</ul>
+                <h3 class="text-sm font-bold text-slate-700 mb-3 uppercase tracking-wide">Faire une nouvelle demande</h3>
+                <form action="/aides-form" method="POST" class="space-y-4">
                     <input type="hidden" name="user_id" value="{user['id']}">
-                    <div class="form-group"><label>Motif :</label><input type="text" name="motif" required></div>
-                    <div class="form-group"><label>Montant demandé (CFA) :</label><input type="number" name="montant_demande" required></div>
-                    <button type="submit" style="background-color: #d35400;">Soumettre la demande</button>
+                    <div><label class="block text-xs font-bold text-slate-600 mb-1">Motif</label><input type="text" name="motif" required class="w-full p-2.5 border rounded-lg text-sm"></div>
+                    <div><label class="block text-xs font-bold text-slate-600 mb-1">Montant demandé (CFA)</label><input type="number" name="montant_demande" required class="w-full p-2.5 border rounded-lg text-sm"></div>
+                    <button type="submit" class="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-2.5 rounded-lg text-sm">Soumettre la demande</button>
                 </form>
             </div>
             """
@@ -607,89 +626,74 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
         evenements_html = ""
         for ev in all_evenements:
             evenements_html += f"""
-            <div style="border: 1px solid #eee; padding: 15px; border-radius: 6px; margin-bottom: 15px; background: #fafafa;">
-                <h3 style="margin:0 0 5px 0; color:#2c3e50;">{ev['titre']} <span style="font-size:0.8rem; font-weight:normal; background:#e1e8ed; padding:2px 6px; border-radius:4px;">{ev['type_evenement']}</span></h3>
-                <p style="margin:0 0 5px 0; font-size:0.9rem;"><b>Description :</b> {ev['description']}</p>
-                <p style="margin:0; font-size:0.85rem; color:#7f8c8d;"><b>Date :</b> {ev['date_evenement']} | <b>Lieu :</b> {ev['lieu']} | <b>Statut :</b> {ev['statut']}</p>
+            <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 mb-3">
+                <div class="flex justify-between items-start mb-2"><h3 class="font-bold text-slate-900 text-base">{ev['titre']}</h3><span class="bg-blue-100 text-blue-800 text-xs px-2.5 py-0.5 rounded-full font-bold">{ev['type_evenement']}</span></div>
+                <p class="text-sm text-slate-600 mb-2"><b>Description :</b> {ev['description']}</p>
+                <div class="text-xs text-slate-500 flex flex-wrap gap-4"><span>📅 {ev['date_evenement']}</span><span>📍 {ev['lieu']}</span><span>📌 Statut: <b>{ev['statut']}</b></span></div>
             </div>
             """
 
         projets_html = ""
         for p in all_projets:
-            img_tag = f"<img src='{p['photo_projet']}' style='width:100%; max-height:200px; object-fit:cover; border-radius:5px; margin-bottom:10px;' onerror='this.style.display=\"none\"'>" if p['photo_projet'] else ""
+            img_tag = f"<img src='{p['photo_projet']}' class='w-full h-40 object-cover rounded-xl mb-3' onerror='this.style.display=\"none\"'>" if p['photo_projet'] else ""
             projets_html += f"""
-            <div style="border: 1px solid #eee; padding: 15px; border-radius: 6px; margin-bottom: 15px; background: #fafafa;">
+            <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 mb-4">
                 {img_tag}
-                <h3 style="margin:0 0 8px 0; color:#2c3e50;">{p['titre']} <span style="font-size:0.8rem; font-weight:normal; background:#e1e8ed; padding:2px 6px; border-radius:4px;">{p['statut']}</span></h3>
-                <p style="margin:0 0 5px 0; font-size:0.9rem;">{p['description']}</p>
-                <p style="margin:0; font-size:0.85rem; color:#7f8c8d;"><b>Coût :</b> {p['cout']} CFA | <b>Chronologie :</b> {p['chronologie']}</p>
+                <div class="flex justify-between items-start mb-2"><h3 class="font-bold text-slate-900 text-base">{p['titre']}</h3><span class="bg-emerald-100 text-emerald-800 text-xs px-2.5 py-0.5 rounded-full font-bold">{p['statut']}</span></div>
+                <p class="text-sm text-slate-600 mb-2">{p['description']}</p>
+                <div class="text-xs text-slate-500 flex gap-4"><span>💰 {p['cout']} CFA</span><span>⏳ {p['chronologie']}</span></div>
             </div>
             """
 
-        user_photo = f"<img src='{user['photo_profil']}' style='width:70px; height:70px; border-radius:50%; object-fit:cover; float:right;' onerror='this.style.display=\"none\"'>" if user['photo_profil'] else ""
+        user_photo = f"<img src='{user['photo_profil']}' class='w-16 h-16 rounded-full object-cover shadow-sm' onerror='this.style.display=\"none\"'>" if user['photo_profil'] else "<div class='w-16 h-16 rounded-full bg-slate-200 flex items-center justify-center font-bold text-slate-500 text-xl'>" + user['prenom'][0] + "</div>"
 
         return f"""
         <!DOCTYPE html>
         <html lang="fr">
         <head>
             <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>Tableau de bord - Association Tinka</title>
-            <style>
-                :root {{ --primary: #2c3e50; --accent: #27ae60; --bg: #f8f9fa; --info: #2980b9; --pdf: #c0392b; --danger: #e74c3c; }}
-                body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: var(--bg); margin: 0; padding: 20px; color: #333; }}
-                .container {{ max-width: 1000px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }}
-                h1 {{ color: var(--primary); text-align: center; }}
-                .card {{ background: #fff; border: 1px solid #e1e8ed; padding: 20px; border-radius: 8px; margin-bottom: 20px; }}
-                .card h2 {{ margin-top: 0; color: var(--accent); font-size: 1.2rem; border-bottom: 2px solid #f1f1f1; padding-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }}
-                .form-group {{ margin-bottom: 12px; }}
-                label {{ display: block; margin-bottom: 4px; font-weight: 600; font-size: 0.9rem; }}
-                input, select, textarea {{ width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; }}
-                button {{ background-color: var(--accent); color: white; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; font-size: 1rem; width: 100%; font-weight: bold; }}
-                button:hover {{ background-color: #219653; }}
-                .btn-danger {{ background-color: var(--danger); color: white; padding: 8px 15px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block; }}
-                ul {{ padding-left: 20px; }}
-                li {{ margin-bottom: 8px; font-size: 0.9rem; }}
-                table th, table td {{ border-bottom: 1px solid #eee; padding: 8px; text-align: left; }}
-            </style>
+            <script src="https://cdn.tailwindcss.com"></script>
         </head>
-        <body>
-            <div class="container">
-                <h1>Association Tinka - Tableau de Bord</h1>
-                
-                <div class="card" style="background: #eaf2f8; overflow:hidden;">
-                    {user_photo}
-                    <h2>Mon Profil</h2>
-                    <p><b>Nom & Prénom :</b> {user['prenom']} {user['nom']}</p>
-                    <p><b>Secteur :</b> {user['secteur']} | <b>Téléphone :</b> {user['telephone']} | <b>Email :</b> {user['email']}</p>
-                    <p><b>Rôle :</b> <span style="text-transform: uppercase; color: #2980b9; font-weight: bold;">{user['role']}</span></p>
-                    
-                    <hr style="border:0; border-top:1px solid #d0e1f9; margin:10px 0;">
-                    <form action="/modifier-photo" method="POST" enctype="multipart/form-data" style="display:flex; gap:10px; align-items:flex-end;">
-                        <input type="hidden" name="user_id" value="{user['id']}">
-                        <div style="flex:1;" class="form-group">
-                            <label style="font-size:0.8rem;">Mettre à jour ma photo (depuis PC ou Téléphone) :</label>
-                            <input type="file" name="file_photo" accept="image/*" required style="padding:3px; font-size:0.85rem;">
-                        </div>
+        <body class="bg-slate-50 text-slate-800 font-sans antialiased min-h-screen py-6 px-4">
+            <div class="max-w-4xl mx-auto">
+                <header class="text-center mb-8">
+                    <span class="text-xs font-bold text-emerald-700 bg-emerald-100 px-3 py-1 rounded-full uppercase tracking-wider">Espace Membre & Bureau</span>
+                    <h1 class="text-2xl sm:text-3xl font-black text-slate-900 mt-2">Association Tinka</h1>
+                </header>
+
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6 flex flex-col sm:flex-row items-center gap-4 justify-between">
+                    <div class="flex items-center gap-4 w-full sm:w-auto">
+                        {user_photo}
                         <div>
-                            <button type="submit" style="background:#2980b9; padding:6px 12px; font-size:0.85rem; width:auto;">Envoyer</button>
+                            <h2 class="text-lg font-bold text-slate-900">{user['prenom']} {user['nom']}</h2>
+                            <p class="text-xs text-slate-500">Secteur : {user['secteur']} | Tél : {user['telephone']}</p>
+                            <p class="text-xs font-bold text-blue-600 uppercase mt-1">Rôle : {user['role']}</p>
                         </div>
-                    </form>
-                    <br>
-                    <a href="/" class="btn-danger" style="font-size:0.85rem; padding:6px 12px;">Se déconnecter</a>
+                    </div>
+                    <div class="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                        <form action="/modifier-photo" method="POST" enctype="multipart/form-data" class="flex gap-2 items-center">
+                            <input type="hidden" name="user_id" value="{user['id']}">
+                            <input type="file" name="file_photo" accept="image/*" required class="text-xs text-slate-500 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-blue-50 file:text-blue-700">
+                            <button type="submit" class="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold">Photo</button>
+                        </form>
+                        <a href="/" class="bg-red-600 hover:bg-red-700 text-white px-4 py-1.5 rounded-lg text-xs font-bold text-center">Déconnexion</a>
+                    </div>
                 </div>
 
                 {finance_sections_html}
 
                 {member_sections_html}
 
-                <div class="card">
-                    <h2>Agenda des Événements & Réunions (AG & Daara)</h2>
-                    <div>{evenements_html or '<p>Aucun événement planifié pour le moment.</p>'}</div>
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
+                    <h2 class="text-lg font-bold text-slate-800 mb-4 border-b pb-2">📅 Agenda des Événements & Réunions</h2>
+                    <div>{evenements_html or '<p class="text-sm text-slate-400">Aucun événement planifié.</p>'}</div>
                 </div>
 
-                <div class="card">
-                    <h2>Projets de l'Association & Bureau</h2>
-                    <div>{projets_html or '<p>Aucun projet enregistré.</p>'}</div>
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
+                    <h2 class="text-lg font-bold text-slate-800 mb-4 border-b pb-2">🚀 Projets de l'Association & du Bureau</h2>
+                    <div>{projets_html or '<p class="text-sm text-slate-400">Aucun projet enregistré.</p>'}</div>
                 </div>
             </div>
         </body>
