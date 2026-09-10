@@ -13,7 +13,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Association Tinka", version="11.1")
+app = FastAPI(title="API Gestion Association Tinka", version="12.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -167,6 +167,18 @@ async def ajouter_projet(
     supabase.table("projets").insert({
         "titre": titre, "description": description, "objectifs": objectifs,
         "cout": cout, "photo_projet": photo_path, "chronologie": chronologie, "statut": statut
+    }).execute()
+    return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
+
+@app.post("/evenements-form/")
+@app.post("/evenements-form")
+def ajouter_evenement(
+    user_id: int = Form(...), titre: str = Form(...), description: str = Form(...),
+    date_evenement: str = Form(...), lieu: str = Form(...), type_evenement: str = Form(...), statut: str = Form(...)
+):
+    supabase.table("evenements").insert({
+        "titre": titre, "description": description, "date_evenement": date_evenement,
+        "lieu": lieu, "type_evenement": type_evenement, "statut": statut
     }).execute()
     return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
 
@@ -360,6 +372,9 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
         proj_res = supabase.table("projets").select("*").execute()
         all_projets = proj_res.data
 
+        evt_res = supabase.table("evenements").select("*").execute()
+        all_evenements = evt_res.data
+
         total_cotis = sum([c['montant'] for c in all_cotisations])
         total_aides_approuvees = sum([ai['montant_demande'] for ai in all_aides if ai['statut_validation'] == 'approuve'])
         total_dec = sum([d['montant'] for d in all_decaissements])
@@ -384,7 +399,6 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
 
             options_filtre_mois = "".join([f"<option value='{m}' {'selected' if filtre_periode==m else ''}>{m}</option>" for m in mois_12])
 
-            # Répartition des dépenses par catégorie (incluant Daara Tinka et autres)
             categories_dict = {}
             for d in all_decaissements:
                 cat = d.get('categorie', 'Divers') or 'Divers'
@@ -510,6 +524,33 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                 </form>
             </div>
 
+            <div class="card">
+                <h2>Planifier un Événement ou une Réunion (AG, Daara, Bureau)</h2>
+                <form action="/evenements-form" method="POST">
+                    <input type="hidden" name="user_id" value="{user['id']}">
+                    <div class="form-group"><label>Titre de l'événement :</label><input type="text" name="titre" required></div>
+                    <div class="form-group"><label>Description / Ordre du jour :</label><textarea name="description" rows="2" required></textarea></div>
+                    <div class="form-group"><label>Date et Heure :</label><input type="datetime-local" name="date_evenement" required></div>
+                    <div class="form-group"><label>Lieu :</label><input type="text" name="lieu" required></div>
+                    <div class="form-group"><label>Type d'événement :</label>
+                        <select name="type_evenement">
+                            <option value="Assemblee Generale">Assemblée Générale</option>
+                            <option value="Reunion Bureau">Réunion du Bureau</option>
+                            <option value="Evenement Daara">Événement Daara Tinka</option>
+                            <option value="Ceremonie">Cérémonie / Autre</option>
+                        </select>
+                    </div>
+                    <div class="form-group"><label>Statut :</label>
+                        <select name="statut">
+                            <option value="prevu" selected>Prévu</option>
+                            <option value="en_cours">En cours</option>
+                            <option value="termine">Terminé</option>
+                        </select>
+                    </div>
+                    <button type="submit" style="background-color: #27ae60;">Programmer l'événement</button>
+                </form>
+            </div>
+
             {f'''
             <div class="card">
                 <h2>Ajouter un Projet au Bureau (Planification)</h2>
@@ -560,6 +601,16 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                     <div class="form-group"><label>Montant demandé (CFA) :</label><input type="number" name="montant_demande" required></div>
                     <button type="submit" style="background-color: #d35400;">Soumettre la demande</button>
                 </form>
+            </div>
+            """
+
+        evenements_html = ""
+        for ev in all_evenements:
+            evenements_html += f"""
+            <div style="border: 1px solid #eee; padding: 15px; border-radius: 6px; margin-bottom: 15px; background: #fafafa;">
+                <h3 style="margin:0 0 5px 0; color:#2c3e50;">{ev['titre']} <span style="font-size:0.8rem; font-weight:normal; background:#e1e8ed; padding:2px 6px; border-radius:4px;">{ev['type_evenement']}</span></h3>
+                <p style="margin:0 0 5px 0; font-size:0.9rem;"><b>Description :</b> {ev['description']}</p>
+                <p style="margin:0; font-size:0.85rem; color:#7f8c8d;"><b>Date :</b> {ev['date_evenement']} | <b>Lieu :</b> {ev['lieu']} | <b>Statut :</b> {ev['statut']}</p>
             </div>
             """
 
@@ -630,6 +681,11 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                 {finance_sections_html}
 
                 {member_sections_html}
+
+                <div class="card">
+                    <h2>Agenda des Événements & Réunions (AG & Daara)</h2>
+                    <div>{evenements_html or '<p>Aucun événement planifié pour le moment.</p>'}</div>
+                </div>
 
                 <div class="card">
                     <h2>Projets de l'Association & Bureau</h2>
