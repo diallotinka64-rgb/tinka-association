@@ -3,9 +3,6 @@ uvicorn
 reportlab
 pydantic
 python-multipart
-fastapi
-uvicorn
-reportlab
-pydantic
-python-multipart
 supabase
+bcrypt
+qrcode[pil]
