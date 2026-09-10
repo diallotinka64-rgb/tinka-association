@@ -14,7 +14,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="16.0")
+app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="17.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -57,16 +57,16 @@ def login_get_redirect():
 
 @app.post("/login-form/")
 @app.post("/login-form")
-def login_form(email: str = Form(...), mot_de_passe: str = Form(...)):
+def login_form(telephone: str = Form(...), mot_de_passe: str = Form(...)):
     try:
-        res = supabase.table("adherents").select("*").eq("email", email).execute()
+        res = supabase.table("adherents").select("*").eq("telephone", telephone).execute()
         users = res.data
         if not users:
-            return HTMLResponse(content="<script>alert('Email ou mot de passe incorrect.'); window.location.href='/';</script>", status_code=401)
+            return HTMLResponse(content="<script>alert('Numéro de téléphone ou mot de passe incorrect.'); window.location.href='/';</script>", status_code=401)
         
         user = users[0]
         if not verifier_mdp(mot_de_passe, user['mot_de_passe']):
-            return HTMLResponse(content="<script>alert('Email ou mot de passe incorrect.'); window.location.href='/';</script>", status_code=401)
+            return HTMLResponse(content="<script>alert('Numéro de téléphone ou mot de passe incorrect.'); window.location.href='/';</script>", status_code=401)
 
         if user.get('statut') != 'actif':
             return HTMLResponse(content="<script>alert('Votre compte est en attente de validation par l\\'administrateur.'); window.location.href='/';</script>", status_code=403)
@@ -77,8 +77,8 @@ def login_form(email: str = Form(...), mot_de_passe: str = Form(...)):
 @app.post("/adherents-form/")
 @app.post("/adherents-form")
 async def creer_adherent_form(
-    nom: str = Form(...), prenom: str = Form(...), email: str = Form(...),
-    telephone: str = Form(...), adresse: str = Form(...), secteur: str = Form(...),
+    nom: str = Form(...), prenom: str = Form(...), telephone: str = Form(...),
+    adresse: str = Form(...), secteur: str = Form(...),
     mot_de_passe: str = Form(...), file_photo: UploadFile = File(None)
 ):
     photo_path = ""
@@ -92,12 +92,12 @@ async def creer_adherent_form(
 
     try:
         supabase.table("adherents").insert({
-            "nom": nom, "prenom": prenom, "email": email, "telephone": telephone,
+            "nom": nom, "prenom": prenom, "email": f"{telephone}@tinka.local", "telephone": telephone,
             "adresse": adresse, "secteur": secteur, "photo_profil": photo_path, "mot_de_passe": mdp_securise
         }).execute()
         return HTMLResponse(content="<script>alert('Compte créé avec succès ! En attente de validation.'); window.location.href='/';</script>")
     except Exception as e:
-        return HTMLResponse(content=f"<script>alert('Erreur : {str(e)}'); window.location.href='/';</script>")
+        return HTMLResponse(content=f"<script>alert('Erreur (Ce numéro existe peut-être déjà) : {str(e)}'); window.location.href='/';</script>")
 
 @app.post("/modifier-photo")
 async def modifier_photo(user_id: int = Form(...), file_photo: UploadFile = File(...)):
@@ -125,12 +125,11 @@ def changer_role(user_id: int = Form(...), adherent_id: int = Form(...), nouveau
 def modifier_adherent(
     user_id: int = Form(...), adherent_id: int = Form(...),
     nom: str = Form(...), prenom: str = Form(...),
-    telephone: str = Form(...), email: str = Form(...), secteur: str = Form(...)
+    telephone: str = Form(...), secteur: str = Form(...)
 ):
     try:
         supabase.table("adherents").update({
-            "nom": nom, "prenom": prenom, "telephone": telephone,
-            "email": email, "secteur": secteur
+            "nom": nom, "prenom": prenom, "telephone": telephone, "secteur": secteur
         }).eq("id", adherent_id).execute()
         return HTMLResponse(content=f"<script>alert('Informations mises à jour avec succès !'); window.location.href='/dashboard?id={user_id}';</script>")
     except Exception as e:
@@ -250,7 +249,7 @@ def export_cotisations_pdf(periode: Optional[str] = Query(None)):
 
 @app.get("/cotisation/recu-pdf/{cotisation_id}")
 def telecharger_recu_pdf(cotisation_id: int):
-    res = supabase.table("cotisations").select("*, adherents(nom, prenom, secteur, telephone, email)").eq("id", cotisation_id).execute()
+    res = supabase.table("cotisations").select("*, adherents(nom, prenom, secteur, telephone)").eq("id", cotisation_id).execute()
     if not res.data:
         return HTMLResponse("Reçu introuvable", status_code=404)
     
@@ -329,8 +328,8 @@ def afficher_portail():
                     <h2 class="text-base font-bold text-slate-800 mb-4 flex items-center gap-2">🔐 Connexion</h2>
                     <form action="/login-form" method="POST" class="space-y-4">
                         <div>
-                            <label class="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">Email</label>
-                            <input type="email" name="email" required class="w-full px-3 py-2.5 text-sm bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+                            <label class="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">Numéro de téléphone</label>
+                            <input type="text" name="telephone" placeholder="ex: 221771234567" required class="w-full px-3 py-2.5 text-sm bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none">
                         </div>
                         <div>
                             <label class="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">Mot de passe</label>
@@ -354,11 +353,7 @@ def afficher_portail():
                             </div>
                         </div>
                         <div>
-                            <label class="block text-xs font-bold text-slate-600 mb-1">Email</label>
-                            <input type="email" name="email" required class="w-full px-2.5 py-2 text-sm bg-white border border-slate-300 rounded-lg">
-                        </div>
-                        <div>
-                            <label class="block text-xs font-bold text-slate-600 mb-1">Téléphone (ex: 221771234567)</label>
+                            <label class="block text-xs font-bold text-slate-600 mb-1">Téléphone (Identifiant unique, ex: 221771234567)</label>
                             <input type="text" name="telephone" required class="w-full px-2.5 py-2 text-sm bg-white border border-slate-300 rounded-lg">
                         </div>
                         <div>
@@ -403,7 +398,7 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
         all_actifs = supabase.table("adherents").select("*").eq("statut", "actif").execute().data
         all_adherents = supabase.table("adherents").select("*").execute().data
         
-        cotis_res = supabase.table("cotisations").select("*, adherents(nom, prenom, secteur, telephone, email)").execute()
+        cotis_res = supabase.table("cotisations").select("*, adherents(nom, prenom, secteur, telephone)").execute()
         all_cotisations = cotis_res.data
 
         cotis_affichees = [c for c in all_cotisations if c['periode'] == filtre_periode] if filtre_periode else all_cotisations
@@ -442,16 +437,12 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                     statut_ajour = f"<span class='text-red-600 font-bold'>Retard ({nb_retard} mois)</span>"
                     
                     msg_whatsapp = urllib.parse.quote(f"Bonjour {a['prenom']} {a['nom']}, le bureau de Tinka ka Mein Haaldi fotti vous rappelle que vous avez {nb_retard} mois de cotisation en retard ({', '.join(mois_manquants)}). Merci de régulariser.")
-                    msg_email_sujet = urllib.parse.quote("Rappel - Cotisation en retard (Tinka ka Mein Haaldi fotti)")
-                    msg_email_corps = urllib.parse.quote(f"Bonjour {a['prenom']} {a['nom']},\n\nLe bureau exécutif de Tinka ka Mein Haaldi fotti vous rappelle que vous avez {nb_retard} mois de cotisation en attente de règlement ({', '.join(mois_manquants)}).\n\nMerci de bien vouloir régulariser votre situation.\n\nCordialement,\nLe Trésorier.")
 
                     tel = a.get('telephone', '').replace('+', '').replace(' ', '')
-                    email_dest = a.get('email', '')
 
-                    boutons_relance = f"""
-                    <div class="mt-2 flex gap-2 flex-wrap">
+                    bouton_relance = f"""
+                    <div class="mt-2">
                         <a href="https://wa.me/{tel}?text={msg_whatsapp}" target="_blank" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold inline-flex items-center gap-1.5 shadow-sm">💚 Relancer par WhatsApp</a>
-                        <a href="mailto:{email_dest}?subject={msg_email_sujet}&body={msg_email_corps}" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold inline-flex items-center gap-1.5 shadow-sm">✉️ Relancer par E-mail</a>
                     </div>
                     """
                     relances_whatsapp_html += f"""
@@ -461,7 +452,7 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                             <span class="text-red-700 font-bold text-xs bg-red-100 px-2.5 py-1 rounded-full">{nb_retard} mois manquant(s)</span>
                         </div>
                         <div class="text-xs text-slate-600 mt-1">Mois en retard : {', '.join(mois_manquants)}</div>
-                        {boutons_relance}
+                        {bouton_relance}
                     </div>
                     """
 
@@ -508,7 +499,6 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
 
                 photo_tag = f"<img src='{a['photo_profil']}' class='w-10 h-10 rounded-full object-cover mr-3' onerror='this.style.display=\"none\"'>" if a['photo_profil'] else "<div class='w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center font-bold text-slate-500 mr-3'>" + a['prenom'][0] + "</div>"
 
-                # Formulaire complet de modification des infos de l'adhérent (pour Admin/Trésorier)
                 adherents_gestion_html += f"""
                 <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 mb-3">
                     <div class="flex items-center justify-between mb-3">
@@ -528,7 +518,7 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                             <input type="text" name="nom" value="{a['nom']}" required class="w-full p-1.5 text-xs border rounded bg-white">
                         </div>
                         <div>
-                            <label class="block text-[10px] font-bold text-slate-500 uppercase">Téléphone</label>
+                            <label class="block text-[10px] font-bold text-slate-500 uppercase">Téléphone (ID)</label>
                             <input type="text" name="telephone" value="{a['telephone']}" required class="w-full p-1.5 text-xs border rounded bg-white">
                         </div>
                         <div>
@@ -567,8 +557,8 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
             </div>
 
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
-                <h2 class="text-lg font-bold text-emerald-700 mb-2 border-b pb-2">📢 Centre de Relances (WhatsApp & E-mails)</h2>
-                <p class="text-xs text-slate-500 mb-4">Cliquez pour envoyer instantanément un rappel WhatsApp ou e-mail pré-rempli aux membres en retard.</p>
+                <h2 class="text-lg font-bold text-emerald-700 mb-2 border-b pb-2">📢 Centre de Relances WhatsApp</h2>
+                <p class="text-xs text-slate-500 mb-4">Cliquez pour envoyer instantanément un rappel WhatsApp pré-rempli aux membres en retard.</p>
                 <div class="max-h-80 overflow-y-auto pr-1">
                     {relances_whatsapp_html or '<div class="text-sm text-emerald-600 font-semibold p-3 bg-emerald-50 rounded-xl text-center">🎉 Aucun membre en retard pour le moment ! Tout le monde est à jour.</div>'}
                 </div>
