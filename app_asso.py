@@ -14,7 +14,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="18.0")
+app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="20.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -203,6 +203,17 @@ def ajouter_evenement(
     }).execute()
     return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
 
+@app.post("/presences-form/")
+@app.post("/presences-form")
+def enregistrer_presence(user_id: int = Form(...), adherent_id: int = Form(...), evenement_titre: str = Form(...), statut_presence: str = Form(...), date_reunion: str = Form(...)):
+    try:
+        supabase.table("presences_association").insert({
+            "adherent_id": adherent_id, "evenement_titre": evenement_titre, "statut_presence": statut_presence, "date_reunion": date_reunion
+        }).execute()
+    except Exception:
+        pass
+    return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
+
 @app.get("/cotisations/export-pdf")
 def export_cotisations_pdf(periode: Optional[str] = Query(None)):
     query = supabase.table("cotisations").select("*, adherents(nom, prenom, secteur)")
@@ -210,7 +221,7 @@ def export_cotisations_pdf(periode: Optional[str] = Query(None)):
         query = query.eq("periode", periode)
         titre_rapport = f"Tinka ka Mein Haaldi fotti - Rapport des Cotisations ({periode})"
     else:
-        titre_rapport = "Tinka ka Mein Haaldi fotti - Rapport Global des Cotisations"
+        titre_rapport = f"Tinka ka Mein Haaldi fotti - Rapport Global des Cotisations"
     
     res = query.execute()
     cotis = res.data
@@ -402,7 +413,7 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
         is_tresorier = user['role'] in ['admin', 'tresorier']
 
         annee_courante = datetime.datetime.now().year
-        mois_12 = [f"{annee_courante}-{m:02d}" for m in range(1, 13)]
+        mois_12 = [f"{annee_courante}-{m:02d}" for m in range(9, 13)] + [f"{annee_courante+1}-{m:02d}" for m in range(1, 9)]
 
         all_actifs = supabase.table("adherents").select("*").eq("statut", "actif").execute().data
         all_adherents = supabase.table("adherents").select("*").execute().data
@@ -431,7 +442,6 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
 
         finance_sections_html = ""
         if is_tresorier:
-            # Options avec attribut data-text pour la recherche instantanée
             options_adherents = "".join([f"<option value='{a['id']}' data-text='{a['prenom'].lower()} {a['nom'].lower()} {a['secteur'].lower()} {a['telephone']}'>{a['prenom']} {a['nom']} — Secteur: {a['secteur']} (Tél: {a['telephone']})</option>" for a in all_actifs if a['role'] != 'admin'])
             
             suivi_retards_html = ""
@@ -450,19 +460,16 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
 
                     tel = a.get('telephone', '').replace('+', '').replace(' ', '')
 
-                    bouton_relance = f"""
-                    <div class="mt-2">
-                        <a href="https://wa.me/{tel}?text={msg_whatsapp}" target="_blank" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold inline-flex items-center gap-1.5 shadow-sm">💚 Relancer par WhatsApp</a>
-                    </div>
-                    """
                     relances_whatsapp_html += f"""
-                    <div class="bg-red-50 p-4 rounded-xl border border-red-100 mb-3 text-sm">
+                    <div class="relance-item bg-red-50 p-4 rounded-xl border border-red-100 mb-3 text-sm" data-search="{a['prenom'].lower()} {a['nom'].lower()} {a['secteur'].lower()} {tel}">
                         <div class="flex justify-between items-center">
                             <div><b>{a['prenom']} {a['nom']}</b> <span class='text-xs text-slate-500'>({a['secteur']} - +{tel})</span></div>
                             <span class="text-red-700 font-bold text-xs bg-red-100 px-2.5 py-1 rounded-full">{nb_retard} mois manquant(s)</span>
                         </div>
                         <div class="text-xs text-slate-600 mt-1">Mois en retard : {', '.join(mois_manquants)}</div>
-                        {bouton_relance}
+                        <div class="mt-2">
+                            <a href="https://wa.me/{tel}?text={msg_whatsapp}" target="_blank" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold inline-flex items-center gap-1.5 shadow-sm">💚 Relancer par WhatsApp</a>
+                        </div>
                     </div>
                     """
 
@@ -473,7 +480,8 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                 adh = c.get('adherents', {}) or {}
                 btn_recu = f"<a href='/cotisation/recu-pdf/{c['id']}' target='_blank' class='bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1 rounded text-xs font-semibold'>Reçu PDF</a>"
                 montant_c_fmt = formater_montant(c['montant'])
-                cotis_table_html += f"<tr class='hover:bg-slate-50'><td class='p-2.5 font-medium'>{adh.get('prenom','')} {adh.get('nom','')}</td><td class='p-2.5 text-slate-600'>{adh.get('secteur','')}</td><td class='p-2.5 font-bold text-emerald-600'>{montant_c_fmt} CFA</td><td class='p-2.5 text-slate-600'>{c['periode']}</td><td class='p-2.5 text-slate-600'>{c['mode_paiement']}</td><td class='p-2.5'>{btn_recu}</td></tr>"
+                search_cotis = f"{adh.get('prenom','')} {adh.get('nom','')} {adh.get('secteur','')} {c['periode']} {c['mode_paiement']}".lower()
+                cotis_table_html += f"<tr class='cotis-row hover:bg-slate-50' data-search='{search_cotis}'><td class='p-2.5 font-medium'>{adh.get('prenom','')} {adh.get('nom','')}</td><td class='p-2.5 text-slate-600'>{adh.get('secteur','')}</td><td class='p-2.5 font-bold text-emerald-600'>{montant_c_fmt} CFA</td><td class='p-2.5 text-slate-600'>{c['periode']}</td><td class='p-2.5 text-slate-600'>{c['mode_paiement']}</td><td class='p-2.5'>{btn_recu}</td></tr>"
 
             options_filtre_mois = "".join([f"<option value='{m}' {'selected' if filtre_periode==m else ''}>{m}</option>" for m in mois_12])
 
@@ -511,7 +519,6 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
 
                 photo_tag = f"<img src='{a['photo_profil']}' class='w-10 h-10 rounded-full object-cover mr-3' onerror='this.style.display=\"none\"'>" if a['photo_profil'] else "<div class='w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center font-bold text-slate-500 mr-3'>" + a['prenom'][0] + "</div>"
 
-                # Bloc adhérent avec attribut data-search pour le filtrage instantané
                 search_str = f"{a['prenom']} {a['nom']} {a['telephone']} {a['secteur']}".lower()
                 adherents_gestion_html += f"""
                 <div class="adherent-item bg-slate-50 p-4 rounded-xl border border-slate-200 mb-3" data-search="{search_str}">
@@ -553,6 +560,9 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                 </div>
                 """
 
+            options_presence_adherents = "".join([f"<option value='{a['id']}' data-text='{a['prenom'].lower()} {a['nom'].lower()} {a['secteur'].lower()}'>{a['prenom']} {a['nom']} — {a['secteur']}</option>" for a in all_actifs])
+            options_evenements_titres = "".join([f"<option value='{ev['titre']}'>{ev['titre']} ({ev['date_evenement'][:10]})</option>" for ev in all_evenements]) or "<option value='Réunion Générale Association'>Réunion Générale Association</option>"
+
             total_cotis_fmt = formater_montant(total_cotis)
             total_aides_fmt = formater_montant(total_aides_approuvees)
             total_dec_fmt = formater_montant(total_dec)
@@ -571,16 +581,57 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                 <h3 class="text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Répartition des Dépenses (Daara & Général)</h3>
                 <ul class="mb-6">{repartition_depenses_html or '<li class="text-sm text-slate-400">Aucune dépense enregistrée.</li>'}</ul>
 
-                <h3 class="text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">État des cotisations ({annee_courante})</h3>
+                <h3 class="text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">État des cotisations (Exercice en cours)</h3>
                 <ul class="max-h-60 overflow-y-auto pr-2">{suivi_retards_html}</ul>
             </div>
 
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
-                <h2 class="text-lg font-bold text-emerald-700 mb-2 border-b pb-2">📢 Centre de Relances WhatsApp</h2>
-                <p class="text-xs text-slate-500 mb-4">Cliquez pour envoyer instantanément un rappel WhatsApp pré-rempli aux membres en retard.</p>
-                <div class="max-h-80 overflow-y-auto pr-1">
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 border-b pb-2 gap-2">
+                    <div>
+                        <h2 class="text-lg font-bold text-emerald-700">📢 Centre de Relances WhatsApp</h2>
+                        <p class="text-xs text-slate-500">Envoyez instantanément un rappel pré-rempli.</p>
+                    </div>
+                    <input type="text" id="searchRelance" placeholder="🔍 Filtrer un retardataire..." onkeyup="filtrerRelances()" class="p-2 text-xs border rounded-lg bg-slate-50 w-full sm:w-64 focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+                </div>
+                <div id="relanceContainer" class="max-h-80 overflow-y-auto pr-1">
                     {relances_whatsapp_html or '<div class="text-sm text-emerald-600 font-semibold p-3 bg-emerald-50 rounded-xl text-center">🎉 Aucun membre en retard pour le moment ! Tout le monde est à jour.</div>'}
                 </div>
+            </div>
+
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
+                <h2 class="text-lg font-bold text-teal-700 mb-4 border-b pb-2">📋 Pointage & Présences aux Réunions (Association)</h2>
+                <form action="/presences-form" method="POST" class="space-y-4">
+                    <input type="hidden" name="user_id" value="{user['id']}">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-600 mb-1">Réunion / Événement</label>
+                            <select name="evenement_titre" required class="w-full p-2.5 border rounded-lg text-sm bg-white">
+                                {options_evenements_titres}
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-600 mb-1">Date de la réunion</label>
+                            <input type="date" name="date_reunion" required class="w-full p-2.5 border rounded-lg text-sm bg-white">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">Rechercher et Pointer un Membre</label>
+                        <input type="text" id="searchSelectPresence" placeholder="🔍 Taper un nom, prénom ou secteur..." onkeyup="filtrerSelectPresence()" class="w-full p-2.5 mb-2 border rounded-lg text-sm bg-slate-50 focus:ring-2 focus:ring-teal-500 focus:outline-none">
+                        <select name="adherent_id" id="selectPresenceAdherent" required class="w-full p-2.5 border rounded-lg text-sm bg-white" size="4">
+                            <option value="">-- Choisir un membre --</option>
+                            {options_presence_adherents}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">Statut de présence</label>
+                        <select name="statut_presence" required class="w-full p-2.5 border rounded-lg text-sm bg-white">
+                            <option value="Present">🟢 Présent(e)</option>
+                            <option value="Absent_excuse">🟡 Absent(e) excusé(e)</option>
+                            <option value="Absent_non_excuse">🔴 Absent(e) non excusé(e)</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-2.5 rounded-lg text-sm">Enregistrer le pointage</button>
+                </form>
             </div>
 
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
@@ -614,7 +665,10 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
             </div>
 
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
-                <h2 class="text-lg font-bold text-blue-600 mb-4 border-b pb-2">🔍 Filtrage & Cotisations</h2>
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 border-b pb-2 gap-2">
+                    <h2 class="text-lg font-bold text-blue-600">🔍 Filtrage & Historique des Cotisations</h2>
+                    <input type="text" id="searchCotisTable" placeholder="🔍 Rechercher dans le tableau..." onkeyup="filtrerCotisTable()" class="p-2 text-xs border rounded-lg bg-slate-50 w-full sm:w-64 focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                </div>
                 <form method="GET" action="/dashboard" class="flex flex-col sm:flex-row gap-3 items-end mb-4">
                     <input type="hidden" name="id" value="{user['id']}">
                     <div class="w-full sm:flex-1"><label class="block text-xs font-bold text-slate-600 mb-1">Filtrer par Mois</label><select name="filtre_periode" class="w-full p-2.5 border rounded-lg text-sm bg-white"><option value="">-- Tous les mois --</option>{options_filtre_mois}</select></div>
@@ -624,7 +678,7 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                     </div>
                 </form>
                 <div class="overflow-x-auto max-h-60">
-                    <table class="w-full text-left text-sm border-collapse">
+                    <table class="w-full text-left text-sm border-collapse" id="cotisTable">
                         <thead><tr class="bg-slate-100 text-slate-600 text-xs uppercase"><th class="p-2.5">Membre</th><th class="p-2.5">Secteur</th><th class="p-2.5">Montant</th><th class="p-2.5">Période</th><th class="p-2.5">Mode</th><th class="p-2.5">Reçu</th></tr></thead>
                         <tbody>{cotis_table_html or '<tr><td colspan="6" class="text-center p-4 text-slate-400">Aucune cotisation trouvée.</td></tr>'}</tbody>
                     </table>
@@ -777,11 +831,7 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                     let items = document.getElementsByClassName('adherent-item');
                     for (let i = 0; i < items.length; i++) {{
                         let text = items[i].getAttribute('data-search');
-                        if (text.includes(input)) {{
-                            items[i].style.display = "";
-                        }} else {{
-                            items[i].style.display = "none";
-                        }}
+                        items[i].style.display = text.includes(input) ? "" : "none";
                     }}
                 }}
 
@@ -791,11 +841,35 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                     let options = select.getElementsByTagName('option');
                     for (let i = 1; i < options.length; i++) {{
                         let text = options[i].getAttribute('data-text');
-                        if (text.includes(input)) {{
-                            options[i].style.display = "";
-                        }} else {{
-                            options[i].style.display = "none";
-                        }}
+                        options[i].style.display = text.includes(input) ? "" : "none";
+                    }}
+                }}
+
+                function filtrerSelectPresence() {{
+                    let input = document.getElementById('searchSelectPresence').value.toLowerCase();
+                    let select = document.getElementById('selectPresenceAdherent');
+                    let options = select.getElementsByTagName('option');
+                    for (let i = 1; i < options.length; i++) {{
+                        let text = options[i].getAttribute('data-text');
+                        options[i].style.display = text.includes(input) ? "" : "none";
+                    }}
+                }}
+
+                function filtrerRelances() {{
+                    let input = document.getElementById('searchRelance').value.toLowerCase();
+                    let items = document.getElementsByClassName('relance-item');
+                    for (let i = 0; i < items.length; i++) {{
+                        let text = items[i].getAttribute('data-search');
+                        items[i].style.display = text.includes(input) ? "" : "none";
+                    }}
+                }}
+
+                function filtrerCotisTable() {{
+                    let input = document.getElementById('searchCotisTable').value.toLowerCase();
+                    let rows = document.getElementsByClassName('cotis-row');
+                    for (let i = 0; i < rows.length; i++) {{
+                        let text = rows[i].getAttribute('data-search');
+                        rows[i].style.display = text.includes(input) ? "" : "none";
                     }}
                 }}
             </script>
