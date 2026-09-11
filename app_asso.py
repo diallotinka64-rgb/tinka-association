@@ -14,7 +14,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="17.0")
+app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="18.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -31,6 +31,12 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 UPLOAD_DIR = "static/uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+def formater_montant(montant: float) -> str:
+    try:
+        return f"{int(montant):,}".replace(",", " ")
+    except Exception:
+        return str(montant)
 
 def hacher_mdp(mdp: str) -> str:
     return bcrypt.hashpw(mdp.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
@@ -234,15 +240,17 @@ def export_cotisations_pdf(periode: Optional[str] = Query(None)):
         nom = adh.get('nom', '')
         prenom = adh.get('prenom', '')
         secteur = adh.get('secteur', '')
-        p.drawString(50, y, f"- {prenom} {nom} ({secteur}) | Période: {c['periode']} | Montant: {c['montant']} CFA ({c['mode_paiement']})")
+        montant_fmt = formater_montant(c['montant'])
+        p.drawString(50, y, f"- {prenom} {nom} ({secteur}) | Période: {c['periode']} | Montant: {montant_fmt} CFA ({c['mode_paiement']})")
         total += c['montant']
         y -= 20
         if y < 50:
             p.showPage()
             y = height - 50
 
+    total_fmt = formater_montant(total)
     p.setFont("Helvetica-Bold", 11)
-    p.drawString(50, y - 10, f"Total Général : {total} CFA")
+    p.drawString(50, y - 10, f"Total Général : {total_fmt} CFA")
     p.save()
     buffer.seek(0)
     return StreamingResponse(buffer, media_type="application/pdf", headers={"Content-Disposition": f"attachment; filename=rapport_cotisations_{periode or 'global'}.pdf"})
@@ -255,6 +263,7 @@ def telecharger_recu_pdf(cotisation_id: int):
     
     c = res.data[0]
     adh = c.get('adherents', {}) or {}
+    montant_fmt = formater_montant(c['montant'])
 
     buffer = io.BytesIO()
     p = canvas.Canvas(buffer, pagesize=letter)
@@ -281,7 +290,7 @@ def telecharger_recu_pdf(cotisation_id: int):
     p.rect(50, height - 310, width - 100, 60, stroke=1, fill=0)
     p.setFont("Helvetica-Bold", 14)
     p.setFillColorRGB(0.15, 0.65, 0.35)
-    p.drawString(70, height - 265, f"Montant Versé : {c['montant']} CFA")
+    p.drawString(70, height - 265, f"Montant Versé : {montant_fmt} CFA")
     p.setFont("Helvetica", 11)
     p.setFillColorRGB(0, 0, 0)
     p.drawString(70, height - 285, f"Période couverte : {c['periode']} | Mode de règlement : {c['mode_paiement']}")
@@ -422,7 +431,8 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
 
         finance_sections_html = ""
         if is_tresorier:
-            options_adherents = "".join([f"<option value='{a['id']}'>{a['prenom']} {a['nom']} — Secteur: {a['secteur']} (Tél: {a['telephone']})</option>" for a in all_actifs if a['role'] != 'admin'])
+            # Options avec attribut data-text pour la recherche instantanée
+            options_adherents = "".join([f"<option value='{a['id']}' data-text='{a['prenom'].lower()} {a['nom'].lower()} {a['secteur'].lower()} {a['telephone']}'>{a['prenom']} {a['nom']} — Secteur: {a['secteur']} (Tél: {a['telephone']})</option>" for a in all_actifs if a['role'] != 'admin'])
             
             suivi_retards_html = ""
             relances_whatsapp_html = ""
@@ -462,7 +472,8 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
             for c in cotis_affichees:
                 adh = c.get('adherents', {}) or {}
                 btn_recu = f"<a href='/cotisation/recu-pdf/{c['id']}' target='_blank' class='bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1 rounded text-xs font-semibold'>Reçu PDF</a>"
-                cotis_table_html += f"<tr class='hover:bg-slate-50'><td class='p-2.5 font-medium'>{adh.get('prenom','')} {adh.get('nom','')}</td><td class='p-2.5 text-slate-600'>{adh.get('secteur','')}</td><td class='p-2.5 font-bold text-emerald-600'>{c['montant']} CFA</td><td class='p-2.5 text-slate-600'>{c['periode']}</td><td class='p-2.5 text-slate-600'>{c['mode_paiement']}</td><td class='p-2.5'>{btn_recu}</td></tr>"
+                montant_c_fmt = formater_montant(c['montant'])
+                cotis_table_html += f"<tr class='hover:bg-slate-50'><td class='p-2.5 font-medium'>{adh.get('prenom','')} {adh.get('nom','')}</td><td class='p-2.5 text-slate-600'>{adh.get('secteur','')}</td><td class='p-2.5 font-bold text-emerald-600'>{montant_c_fmt} CFA</td><td class='p-2.5 text-slate-600'>{c['periode']}</td><td class='p-2.5 text-slate-600'>{c['mode_paiement']}</td><td class='p-2.5'>{btn_recu}</td></tr>"
 
             options_filtre_mois = "".join([f"<option value='{m}' {'selected' if filtre_periode==m else ''}>{m}</option>" for m in mois_12])
 
@@ -473,7 +484,8 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
             
             repartition_depenses_html = ""
             for cat, montant_cat in categories_dict.items():
-                repartition_depenses_html += f"<li class='flex justify-between py-1 text-sm border-b border-slate-100'><span>{cat}</span><span class='font-bold text-red-600'>{montant_cat} CFA</span></li>"
+                montant_cat_fmt = formater_montant(montant_cat)
+                repartition_depenses_html += f"<li class='flex justify-between py-1 text-sm border-b border-slate-100'><span>{cat}</span><span class='font-bold text-red-600'>{montant_cat_fmt} CFA</span></li>"
 
             adherents_gestion_html = ""
             for a in all_adherents:
@@ -499,8 +511,10 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
 
                 photo_tag = f"<img src='{a['photo_profil']}' class='w-10 h-10 rounded-full object-cover mr-3' onerror='this.style.display=\"none\"'>" if a['photo_profil'] else "<div class='w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center font-bold text-slate-500 mr-3'>" + a['prenom'][0] + "</div>"
 
+                # Bloc adhérent avec attribut data-search pour le filtrage instantané
+                search_str = f"{a['prenom']} {a['nom']} {a['telephone']} {a['secteur']}".lower()
                 adherents_gestion_html += f"""
-                <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 mb-3">
+                <div class="adherent-item bg-slate-50 p-4 rounded-xl border border-slate-200 mb-3" data-search="{search_str}">
                     <div class="flex items-center justify-between mb-3">
                         <div class="flex items-center">{photo_tag}<div><b>{a['prenom']} {a['nom']}</b> <span class="text-xs bg-slate-200 px-2 py-0.5 rounded ml-1 uppercase">{a['role']}</span> — <span class="text-xs text-slate-500">Statut: {a['statut']}</span></div></div>
                         <div>{actions_admin}</div>
@@ -539,15 +553,20 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                 </div>
                 """
 
+            total_cotis_fmt = formater_montant(total_cotis)
+            total_aides_fmt = formater_montant(total_aides_approuvees)
+            total_dec_fmt = formater_montant(total_dec)
+            solde_fmt = formater_montant(solde)
+
             finance_sections_html = f"""
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
                 <h2 class="text-lg font-bold text-emerald-700 mb-4 border-b pb-2">💰 Trésorerie Globale & Suivi</h2>
                 <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4 text-center">
-                    <div class="bg-emerald-50 p-3 rounded-xl border border-emerald-100"><span class="block text-xs text-emerald-600 font-bold uppercase">Cotisations</span><span class="text-lg font-black text-emerald-800">{total_cotis} CFA</span></div>
-                    <div class="bg-amber-50 p-3 rounded-xl border border-amber-100"><span class="block text-xs text-amber-600 font-bold uppercase">Aides Versées</span><span class="text-lg font-black text-amber-800">{total_aides_approuvees} CFA</span></div>
-                    <div class="bg-red-50 p-3 rounded-xl border border-red-100"><span class="block text-xs text-red-600 font-bold uppercase">Dépenses</span><span class="text-lg font-black text-red-800">{total_dec} CFA</span></div>
+                    <div class="bg-emerald-50 p-3 rounded-xl border border-emerald-100"><span class="block text-xs text-emerald-600 font-bold uppercase">Cotisations</span><span class="text-lg font-black text-emerald-800">{total_cotis_fmt} CFA</span></div>
+                    <div class="bg-amber-50 p-3 rounded-xl border border-amber-100"><span class="block text-xs text-amber-600 font-bold uppercase">Aides Versées</span><span class="text-lg font-black text-amber-800">{total_aides_fmt} CFA</span></div>
+                    <div class="bg-red-50 p-3 rounded-xl border border-red-100"><span class="block text-xs text-red-600 font-bold uppercase">Dépenses</span><span class="text-lg font-black text-red-800">{total_dec_fmt} CFA</span></div>
                 </div>
-                <div class="text-center bg-slate-900 text-white py-3 rounded-xl font-bold text-lg mb-6">Solde en Caisse : <span class="text-emerald-400">{solde} CFA</span></div>
+                <div class="text-center bg-slate-900 text-white py-3 rounded-xl font-bold text-lg mb-6">Solde en Caisse : <span class="text-emerald-400">{solde_fmt} CFA</span></div>
                 
                 <h3 class="text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Répartition des Dépenses (Daara & Général)</h3>
                 <ul class="mb-6">{repartition_depenses_html or '<li class="text-sm text-slate-400">Aucune dépense enregistrée.</li>'}</ul>
@@ -613,15 +632,25 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
             </div>
 
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
-                <h2 class="text-lg font-bold text-slate-700 mb-4 border-b pb-2">👥 Gestion, Rôles & Coordonnées des Adhérents</h2>
-                <div class="max-h-96 overflow-y-auto pr-2">{adherents_gestion_html}</div>
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 border-b pb-2 gap-2">
+                    <h2 class="text-lg font-bold text-slate-700">👥 Gestion, Rôles & Coordonnées des Adhérents</h2>
+                    <input type="text" id="searchAdherent" placeholder="🔍 Rechercher un membre..." onkeyup="filtrerAdherents()" class="p-2 text-xs border rounded-lg bg-slate-50 w-full sm:w-64 focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+                </div>
+                <div id="listeAdherentsContainer" class="max-h-96 overflow-y-auto pr-2">{adherents_gestion_html}</div>
             </div>
 
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
                 <h2 class="text-lg font-bold text-purple-600 mb-4 border-b pb-2">➕ Enregistrer une Cotisation</h2>
                 <form action="/cotisations-form" method="POST" class="space-y-4">
                     <input type="hidden" name="user_id" value="{user['id']}">
-                    <div><label class="block text-xs font-bold text-slate-600 mb-1">Adhérent</label><select name="adherent_id" required class="w-full p-2.5 border rounded-lg text-sm bg-white"><option value="">-- Choisir --</option>{options_adherents}</select></div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">Rechercher et Choisir un Adhérent</label>
+                        <input type="text" id="searchSelectAdherent" placeholder="🔍 Taper un nom, prénom ou téléphone pour filtrer la liste..." onkeyup="filtrerSelectAdherent()" class="w-full p-2.5 mb-2 border rounded-lg text-sm bg-slate-50 focus:ring-2 focus:ring-purple-500 focus:outline-none">
+                        <select name="adherent_id" id="selectAdherent" required class="w-full p-2.5 border rounded-lg text-sm bg-white" size="4">
+                            <option value="">-- Choisir dans la liste ci-dessus --</option>
+                            {options_adherents}
+                        </select>
+                    </div>
                     <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         <div><label class="block text-xs font-bold text-slate-600 mb-1">Montant (CFA)</label><input type="number" name="montant" required class="w-full p-2.5 border rounded-lg text-sm"></div>
                         <div><label class="block text-xs font-bold text-slate-600 mb-1">Période (Mois)</label><select name="periode" required class="w-full p-2.5 border rounded-lg text-sm bg-white">{"".join([f"<option value='{m}'>{m}</option>" for m in mois_12])}</select></div>
@@ -679,11 +708,16 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
             mois_payes_html = ""
             for c in cotis_perso:
                 btn_recu_perso = f"<a href='/cotisation/recu-pdf/{c['id']}' target='_blank' class='bg-blue-600 text-white px-2.5 py-1 rounded text-xs font-semibold inline-block ml-2'>Télécharger Reçu PDF</a>"
-                mois_payes_html += f"<li class='py-2 border-b border-slate-100 text-sm flex justify-between items-center'><span>Mois de <b>{c['periode']}</b> : <span class='text-emerald-600 font-bold'>Payé ({c['montant']} CFA)</span></span> {btn_recu_perso}</li>"
+                montant_cp_fmt = formater_montant(c['montant'])
+                mois_payes_html += f"<li class='py-2 border-b border-slate-100 text-sm flex justify-between items-center'><span>Mois de <b>{c['periode']}</b> : <span class='text-emerald-600 font-bold'>Payé ({montant_cp_fmt} CFA)</span></span> {btn_recu_perso}</li>"
 
             mois_retard_html = "".join([f"<li class='py-2 border-b border-slate-100 text-sm flex justify-between items-center'><span>Mois de {m}</span> <span class='text-red-600 font-bold'>Non payé</span></li>" for m in mois_12 if m not in mois_payes_list])
             
-            aides_membre_html = "".join([f"<li class='py-2 border-b border-slate-100 text-sm'>Motif : <b>{ai['motif']}</b> ({ai['montant_demande']} CFA) — Statut : <span class='font-bold text-amber-600'>{ai['statut_validation']}</span></li>" for ai in all_aides if ai['adherent_id'] == user['id']])
+            aides_membre_html = ""
+            for ai in all_aides:
+                if ai['adherent_id'] == user['id']:
+                    montant_ai_fmt = formater_montant(ai['montant_demande'])
+                    aides_membre_html += f"<li class='py-2 border-b border-slate-100 text-sm'>Motif : <b>{ai['motif']}</b> ({montant_ai_fmt} CFA) — Statut : <span class='font-bold text-amber-600'>{ai['statut_validation']}</span></li>"
 
             member_sections_html = f"""
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
@@ -717,12 +751,13 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
         projets_html = ""
         for p in all_projets:
             img_tag = f"<img src='{p['photo_projet']}' class='w-full h-40 object-cover rounded-xl mb-3' onerror='this.style.display=\"none\"'>" if p['photo_projet'] else ""
+            cout_p_fmt = formater_montant(p['cout'])
             projets_html += f"""
             <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 mb-4">
                 {img_tag}
                 <div class="flex justify-between items-start mb-2"><h3 class="font-bold text-slate-900 text-base">{p['titre']}</h3><span class="bg-emerald-100 text-emerald-800 text-xs px-2.5 py-0.5 rounded-full font-bold">{p['statut']}</span></div>
                 <p class="text-sm text-slate-600 mb-2">{p['description']}</p>
-                <div class="text-xs text-slate-500 flex gap-4"><span>💰 {p['cout']} CFA</span><span>⏳ {p['chronologie']}</span></div>
+                <div class="text-xs text-slate-500 flex gap-4"><span>💰 {cout_p_fmt} CFA</span><span>⏳ {p['chronologie']}</span></div>
             </div>
             """
 
@@ -736,6 +771,34 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>Tableau de bord - Tinka ka Mein Haaldi fotti</title>
             <script src="https://cdn.tailwindcss.com"></script>
+            <script>
+                function filtrerAdherents() {{
+                    let input = document.getElementById('searchAdherent').value.toLowerCase();
+                    let items = document.getElementsByClassName('adherent-item');
+                    for (let i = 0; i < items.length; i++) {{
+                        let text = items[i].getAttribute('data-search');
+                        if (text.includes(input)) {{
+                            items[i].style.display = "";
+                        }} else {{
+                            items[i].style.display = "none";
+                        }}
+                    }}
+                }}
+
+                function filtrerSelectAdherent() {{
+                    let input = document.getElementById('searchSelectAdherent').value.toLowerCase();
+                    let select = document.getElementById('selectAdherent');
+                    let options = select.getElementsByTagName('option');
+                    for (let i = 1; i < options.length; i++) {{
+                        let text = options[i].getAttribute('data-text');
+                        if (text.includes(input)) {{
+                            options[i].style.display = "";
+                        }} else {{
+                            options[i].style.display = "none";
+                        }}
+                    }}
+                }}
+            </script>
         </head>
         <body class="bg-slate-50 text-slate-800 font-sans antialiased min-h-screen py-6 px-4">
             <div class="max-w-4xl mx-auto">
