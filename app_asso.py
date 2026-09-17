@@ -14,7 +14,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="20.0")
+app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="22.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -221,7 +221,7 @@ def export_cotisations_pdf(periode: Optional[str] = Query(None)):
         query = query.eq("periode", periode)
         titre_rapport = f"Tinka ka Mein Haaldi fotti - Rapport des Cotisations ({periode})"
     else:
-        titre_rapport = f"Tinka ka Mein Haaldi fotti - Rapport Global des Cotisations"
+        titre_rapport = "Tinka ka Mein Haaldi fotti - Rapport Global des Cotisations"
     
     res = query.execute()
     cotis = res.data
@@ -517,46 +517,61 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                     </form>
                     """
 
-                photo_tag = f"<img src='{a['photo_profil']}' class='w-10 h-10 rounded-full object-cover mr-3' onerror='this.style.display=\"none\"'>" if a['photo_profil'] else "<div class='w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center font-bold text-slate-500 mr-3'>" + a['prenom'][0] + "</div>"
+                photo_tag = f"<img src='{a['photo_profil']}' class='w-8 h-8 rounded-full object-cover mr-2' onerror='this.style.display=\"none\"'>" if a['photo_profil'] else "<div class='w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center font-bold text-slate-500 text-xs mr-2'>" + a['prenom'][0] + "</div>"
 
                 search_str = f"{a['prenom']} {a['nom']} {a['telephone']} {a['secteur']}".lower()
+                
+                # Format compact par ligne pour éviter le défilement lourd
                 adherents_gestion_html += f"""
-                <div class="adherent-item bg-slate-50 p-4 rounded-xl border border-slate-200 mb-3" data-search="{search_str}">
-                    <div class="flex items-center justify-between mb-3">
-                        <div class="flex items-center">{photo_tag}<div><b>{a['prenom']} {a['nom']}</b> <span class="text-xs bg-slate-200 px-2 py-0.5 rounded ml-1 uppercase">{a['role']}</span> — <span class="text-xs text-slate-500">Statut: {a['statut']}</span></div></div>
-                        <div>{actions_admin}</div>
+                <div class="adherent-item bg-white p-3 rounded-xl border border-slate-200 mb-2 shadow-sm transition hover:border-emerald-300" data-search="{search_str}">
+                    <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
+                        <div class="flex items-center">
+                            {photo_tag}
+                            <div>
+                                <span class="font-bold text-slate-900 text-sm">{a['prenom']} {a['nom']}</span>
+                                <span class="text-[10px] bg-slate-100 px-2 py-0.5 rounded ml-1 uppercase font-semibold text-slate-600">{a['role']}</span>
+                                <span class="text-[10px] text-slate-500 ml-1">({a['secteur']} • {a['telephone']})</span>
+                            </div>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-2 w-full md:w-auto justify-end">
+                            {actions_admin}
+                            <button onclick="toggleEdit({a['id']})" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1 rounded text-xs font-bold">⚙️ Modifier / MDP</button>
+                        </div>
                     </div>
-                    
-                    <form action="/admin/modifier-adherent" method="POST" class="grid grid-cols-1 sm:grid-cols-5 gap-2 items-end">
-                        <input type="hidden" name="user_id" value="{user['id']}">
-                        <input type="hidden" name="adherent_id" value="{a['id']}">
-                        <div>
-                            <label class="block text-[10px] font-bold text-slate-500 uppercase">Prénom</label>
-                            <input type="text" name="prenom" value="{a['prenom']}" required class="w-full p-1.5 text-xs border rounded bg-white">
-                        </div>
-                        <div>
-                            <label class="block text-[10px] font-bold text-slate-500 uppercase">Nom</label>
-                            <input type="text" name="nom" value="{a['nom']}" required class="w-full p-1.5 text-xs border rounded bg-white">
-                        </div>
-                        <div>
-                            <label class="block text-[10px] font-bold text-slate-500 uppercase">Téléphone (ID)</label>
-                            <input type="text" name="telephone" value="{a['telephone']}" required class="w-full p-1.5 text-xs border rounded bg-white">
-                        </div>
-                        <div>
-                            <label class="block text-[10px] font-bold text-slate-500 uppercase">Secteur</label>
-                            <input type="text" name="secteur" value="{a['secteur']}" required class="w-full p-1.5 text-xs border rounded bg-white">
-                        </div>
-                        <div>
-                            <button type="submit" class="w-full bg-slate-700 hover:bg-slate-800 text-white py-1.5 px-2 rounded text-xs font-bold">Modifier</button>
-                        </div>
-                    </form>
 
-                    <form action="/admin/reset-password" method="POST" class="mt-2 pt-2 border-t border-slate-200 flex gap-2 items-center">
-                        <input type="hidden" name="user_id" value="{user['id']}">
-                        <input type="hidden" name="adherent_id" value="{a['id']}">
-                        <input type="text" name="nouveau_mdp" placeholder="Nouveau mot de passe" required class="w-48 p-1 text-xs border rounded bg-white">
-                        <button type="submit" class="bg-amber-600 hover:bg-amber-700 text-white px-3 py-1 rounded text-xs font-bold">Réinitialiser MDP</button>
-                    </form>
+                    <!-- Formulaire caché par défaut qui s'ouvre au clic -->
+                    <div id="edit-box-{a['id']}" class="hidden mt-3 pt-3 border-t border-slate-100 space-y-3 bg-slate-50 p-3 rounded-lg">
+                        <form action="/admin/modifier-adherent" method="POST" class="grid grid-cols-1 sm:grid-cols-4 gap-2 items-end">
+                            <input type="hidden" name="user_id" value="{user['id']}">
+                            <input type="hidden" name="adherent_id" value="{a['id']}">
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-500 uppercase">Prénom</label>
+                                <input type="text" name="prenom" value="{a['prenom']}" required class="w-full p-1.5 text-xs border rounded bg-white">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-500 uppercase">Nom</label>
+                                <input type="text" name="nom" value="{a['nom']}" required class="w-full p-1.5 text-xs border rounded bg-white">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-500 uppercase">Téléphone (ID)</label>
+                                <input type="text" name="telephone" value="{a['telephone']}" required class="w-full p-1.5 text-xs border rounded bg-white">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-500 uppercase">Secteur</label>
+                                <input type="text" name="secteur" value="{a['secteur']}" required class="w-full p-1.5 text-xs border rounded bg-white">
+                            </div>
+                            <div class="sm:col-span-4 flex justify-end">
+                                <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white py-1 px-3 rounded text-xs font-bold">Enregistrer les modifications</button>
+                            </div>
+                        </form>
+
+                        <form action="/admin/reset-password" method="POST" class="flex gap-2 items-center pt-2 border-t border-slate-200">
+                            <input type="hidden" name="user_id" value="{user['id']}">
+                            <input type="hidden" name="adherent_id" value="{a['id']}">
+                            <input type="text" name="nouveau_mdp" placeholder="Nouveau mot de passe" required class="w-48 p-1.5 text-xs border rounded bg-white">
+                            <button type="submit" class="bg-amber-600 hover:bg-amber-700 text-white px-3 py-1 rounded text-xs font-bold">Réinitialiser MDP</button>
+                        </form>
+                    </div>
                 </div>
                 """
 
@@ -686,11 +701,15 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
             </div>
 
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
-                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 border-b pb-2 gap-2">
-                    <h2 class="text-lg font-bold text-slate-700">👥 Gestion, Rôles & Coordonnées des Adhérents</h2>
-                    <input type="text" id="searchAdherent" placeholder="🔍 Rechercher un membre..." onkeyup="filtrerAdherents()" class="p-2 text-xs border rounded-lg bg-slate-50 w-full sm:w-64 focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+                <div class="flex flex-col sm:flex-row justify-between items-center mb-4 border-b pb-2 gap-2">
+                    <div>
+                        <h2 class="text-lg font-bold text-slate-700">👥 Gestion, Rôles & Coordonnées des Adhérents</h2>
+                        <p class="text-xs text-slate-500">Tapez un nom pour filtrer instantanément la liste sans défiler.</p>
+                    </div>
+                    <input type="text" id="searchAdherent" placeholder="🔍 Tapez un nom ou prénom..." onkeyup="filtrerAdherents()" class="p-2.5 text-xs border rounded-lg bg-slate-50 w-full sm:w-72 focus:ring-2 focus:ring-emerald-500 focus:outline-none font-semibold">
                 </div>
-                <div id="listeAdherentsContainer" class="max-h-96 overflow-y-auto pr-2">{adherents_gestion_html}</div>
+                <!-- Suppression de la hauteur fixe restrictive : affichage fluide et propre -->
+                <div id="listeAdherentsContainer" class="space-y-2">{adherents_gestion_html}</div>
             </div>
 
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
@@ -826,6 +845,16 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
             <title>Tableau de bord - Tinka ka Mein Haaldi fotti</title>
             <script src="https://cdn.tailwindcss.com"></script>
             <script>
+                // Fonction pour ouvrir/fermer le panneau de modification compact d'un membre
+                function toggleEdit(id) {{
+                    let box = document.getElementById('edit-box-' + id);
+                    if (box.classList.contains('hidden')) {{
+                        box.classList.remove('hidden');
+                    }} else {{
+                        box.classList.add('hidden');
+                    }}
+                }}
+
                 function filtrerAdherents() {{
                     let input = document.getElementById('searchAdherent').value.toLowerCase();
                     let items = document.getElementsByClassName('adherent-item');
