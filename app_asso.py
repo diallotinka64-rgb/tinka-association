@@ -14,7 +14,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="22.0")
+app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="23.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -495,14 +495,15 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                 montant_cat_fmt = formater_montant(montant_cat)
                 repartition_depenses_html += f"<li class='flex justify-between py-1 text-sm border-b border-slate-100'><span>{cat}</span><span class='font-bold text-red-600'>{montant_cat_fmt} CFA</span></li>"
 
-            adherents_gestion_html = ""
+            adherents_table_rows = ""
+            modals_html = ""
             for a in all_adherents:
                 actions_admin = ""
                 if a['statut'] == 'en_attente':
                     actions_admin += f"""
                     <form action="/admin/valider-adherent" method="POST" class="inline">
                         <input type="hidden" name="user_id" value="{user['id']}"><input type="hidden" name="adherent_id" value="{a['id']}">
-                        <button type="submit" class="bg-emerald-600 text-white px-2 py-1 rounded text-xs font-bold">Valider Compte</button>
+                        <button type="submit" class="bg-emerald-600 text-white px-2 py-1 rounded text-xs font-bold">Valider</button>
                     </form>"""
                 
                 if is_admin:
@@ -517,59 +518,68 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                     </form>
                     """
 
-                photo_tag = f"<img src='{a['photo_profil']}' class='w-8 h-8 rounded-full object-cover mr-2' onerror='this.style.display=\"none\"'>" if a['photo_profil'] else "<div class='w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center font-bold text-slate-500 text-xs mr-2'>" + a['prenom'][0] + "</div>"
+                photo_tag = f"<img src='{a['photo_profil']}' class='w-7 h-7 rounded-full object-cover mr-2' onerror='this.style.display=\"none\"'>" if a['photo_profil'] else "<div class='w-7 h-7 rounded-full bg-slate-200 flex items-center justify-center font-bold text-slate-500 text-[10px] mr-2'>" + a['prenom'][0] + "</div>"
 
                 search_str = f"{a['prenom']} {a['nom']} {a['telephone']} {a['secteur']}".lower()
                 
-                # Format compact par ligne pour éviter le défilement lourd
-                adherents_gestion_html += f"""
-                <div class="adherent-item bg-white p-3 rounded-xl border border-slate-200 mb-2 shadow-sm transition hover:border-emerald-300" data-search="{search_str}">
-                    <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
-                        <div class="flex items-center">
-                            {photo_tag}
-                            <div>
-                                <span class="font-bold text-slate-900 text-sm">{a['prenom']} {a['nom']}</span>
-                                <span class="text-[10px] bg-slate-100 px-2 py-0.5 rounded ml-1 uppercase font-semibold text-slate-600">{a['role']}</span>
-                                <span class="text-[10px] text-slate-500 ml-1">({a['secteur']} • {a['telephone']})</span>
-                            </div>
-                        </div>
-                        <div class="flex flex-wrap items-center gap-2 w-full md:w-auto justify-end">
-                            {actions_admin}
-                            <button onclick="toggleEdit({a['id']})" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1 rounded text-xs font-bold">⚙️ Modifier / MDP</button>
-                        </div>
-                    </div>
+                # Ligne de tableau ultra compacte (style tableau de données)
+                adherents_table_rows += f"""
+                <tr class="adherent-row hover:bg-slate-50 border-b border-slate-100 text-sm" data-search="{search_str}">
+                    <td class="p-2.5 flex items-center font-medium text-slate-900">{photo_tag}{a['prenom']} {a['nom']}</td>
+                    <td class="p-2.5 text-slate-600"><span class="text-xs bg-slate-100 px-2 py-0.5 rounded font-semibold uppercase">{a['role']}</span></td>
+                    <td class="p-2.5 text-slate-600">{a['secteur']}</td>
+                    <td class="p-2.5 text-slate-600 font-mono text-xs">{a['telephone']}</td>
+                    <td class="p-2.5 text-slate-600"><span class="text-xs font-bold text-slate-500">{a['statut']}</span></td>
+                    <td class="p-2.5 text-right space-x-1">
+                        {actions_admin}
+                        <button onclick="openModal({a['id']})" class="bg-blue-50 hover:bg-blue-100 text-blue-700 px-2.5 py-1 rounded text-xs font-bold">⚙️ Modifier</button>
+                    </td>
+                </tr>
+                """
 
-                    <!-- Formulaire caché par défaut qui s'ouvre au clic -->
-                    <div id="edit-box-{a['id']}" class="hidden mt-3 pt-3 border-t border-slate-100 space-y-3 bg-slate-50 p-3 rounded-lg">
-                        <form action="/admin/modifier-adherent" method="POST" class="grid grid-cols-1 sm:grid-cols-4 gap-2 items-end">
+                # Modale (fenêtre flottante) pour modifier chaque membre proprement sans scroller
+                modals_html += f"""
+                <div id="modal-{a['id']}" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+                    <div class="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-100">
+                        <div class="flex justify-between items-center mb-4 border-b pb-2">
+                            <h3 class="font-bold text-lg text-slate-900">Modifier : {a['prenom']} {a['nom']}</h3>
+                            <button onclick="closeModal({a['id']})" class="text-slate-400 hover:text-slate-700 font-bold text-lg">✕</button>
+                        </div>
+                        
+                        <form action="/admin/modifier-adherent" method="POST" class="space-y-3 mb-6">
                             <input type="hidden" name="user_id" value="{user['id']}">
                             <input type="hidden" name="adherent_id" value="{a['id']}">
-                            <div>
-                                <label class="block text-[10px] font-bold text-slate-500 uppercase">Prénom</label>
-                                <input type="text" name="prenom" value="{a['prenom']}" required class="w-full p-1.5 text-xs border rounded bg-white">
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-600 mb-1">Prénom</label>
+                                    <input type="text" name="prenom" value="{a['prenom']}" required class="w-full p-2 text-sm border rounded-lg bg-white">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-600 mb-1">Nom</label>
+                                    <input type="text" name="nom" value="{a['nom']}" required class="w-full p-2 text-sm border rounded-lg bg-white">
+                                </div>
                             </div>
-                            <div>
-                                <label class="block text-[10px] font-bold text-slate-500 uppercase">Nom</label>
-                                <input type="text" name="nom" value="{a['nom']}" required class="w-full p-1.5 text-xs border rounded bg-white">
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-600 mb-1">Téléphone (ID)</label>
+                                    <input type="text" name="telephone" value="{a['telephone']}" required class="w-full p-2 text-sm border rounded-lg bg-white">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-600 mb-1">Secteur</label>
+                                    <input type="text" name="secteur" value="{a['secteur']}" required class="w-full p-2 text-sm border rounded-lg bg-white">
+                                </div>
                             </div>
-                            <div>
-                                <label class="block text-[10px] font-bold text-slate-500 uppercase">Téléphone (ID)</label>
-                                <input type="text" name="telephone" value="{a['telephone']}" required class="w-full p-1.5 text-xs border rounded bg-white">
-                            </div>
-                            <div>
-                                <label class="block text-[10px] font-bold text-slate-500 uppercase">Secteur</label>
-                                <input type="text" name="secteur" value="{a['secteur']}" required class="w-full p-1.5 text-xs border rounded bg-white">
-                            </div>
-                            <div class="sm:col-span-4 flex justify-end">
-                                <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white py-1 px-3 rounded text-xs font-bold">Enregistrer les modifications</button>
-                            </div>
+                            <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2 rounded-lg text-sm font-bold shadow">Enregistrer les modifications</button>
                         </form>
 
-                        <form action="/admin/reset-password" method="POST" class="flex gap-2 items-center pt-2 border-t border-slate-200">
+                        <form action="/admin/reset-password" method="POST" class="pt-4 border-t border-slate-200 space-y-3">
                             <input type="hidden" name="user_id" value="{user['id']}">
                             <input type="hidden" name="adherent_id" value="{a['id']}">
-                            <input type="text" name="nouveau_mdp" placeholder="Nouveau mot de passe" required class="w-48 p-1.5 text-xs border rounded bg-white">
-                            <button type="submit" class="bg-amber-600 hover:bg-amber-700 text-white px-3 py-1 rounded text-xs font-bold">Réinitialiser MDP</button>
+                            <div>
+                                <label class="block text-xs font-bold text-amber-700 mb-1">Réinitialiser le mot de passe</label>
+                                <input type="text" name="nouveau_mdp" placeholder="Nouveau mot de passe" required class="w-full p-2 text-sm border rounded-lg bg-white mb-2">
+                            </div>
+                            <button type="submit" class="w-full bg-amber-600 hover:bg-amber-700 text-white py-2 rounded-lg text-sm font-bold shadow">Mettre à jour le mot de passe</button>
                         </form>
                     </div>
                 </div>
@@ -703,14 +713,34 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
                 <div class="flex flex-col sm:flex-row justify-between items-center mb-4 border-b pb-2 gap-2">
                     <div>
-                        <h2 class="text-lg font-bold text-slate-700">👥 Gestion, Rôles & Coordonnées des Adhérents</h2>
-                        <p class="text-xs text-slate-500">Tapez un nom pour filtrer instantanément la liste sans défiler.</p>
+                        <h2 class="text-lg font-bold text-slate-700">👥 Annuaire & Gestion des Adhérents ({len(all_adherents)} inscrits)</h2>
+                        <p class="text-xs text-slate-500">Tapez un nom pour afficher instantanément le membre.</p>
                     </div>
-                    <input type="text" id="searchAdherent" placeholder="🔍 Tapez un nom ou prénom..." onkeyup="filtrerAdherents()" class="p-2.5 text-xs border rounded-lg bg-slate-50 w-full sm:w-72 focus:ring-2 focus:ring-emerald-500 focus:outline-none font-semibold">
+                    <input type="text" id="searchAdherent" placeholder="🔍 Rechercher (nom, prénom, tél)..." onkeyup="filtrerAdherents()" class="p-2.5 text-xs border rounded-lg bg-slate-50 w-full sm:w-72 focus:ring-2 focus:ring-emerald-500 focus:outline-none font-semibold">
                 </div>
-                <!-- Suppression de la hauteur fixe restrictive : affichage fluide et propre -->
-                <div id="listeAdherentsContainer" class="space-y-2">{adherents_gestion_html}</div>
+                
+                <!-- Format Tableau de Données Ultra Compact -->
+                <div class="overflow-x-auto max-h-[450px] overflow-y-auto border border-slate-200 rounded-xl">
+                    <table class="w-full text-left border-collapse bg-white">
+                        <thead class="bg-slate-100 text-slate-600 text-xs uppercase sticky top-0 z-10 shadow-sm">
+                            <tr>
+                                <th class="p-2.5">Nom & Prénom</th>
+                                <th class="p-2.5">Rôle</th>
+                                <th class="p-2.5">Secteur</th>
+                                <th class="p-2.5">Téléphone</th>
+                                <th class="p-2.5">Statut</th>
+                                <th class="p-2.5 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="adherentsTableBody">
+                            {adherents_table_rows}
+                        </tbody>
+                    </table>
+                </div>
             </div>
+
+            <!-- Modales de modification (S'ouvrent en pop-up sans défiler) -->
+            {modals_html}
 
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
                 <h2 class="text-lg font-bold text-purple-600 mb-4 border-b pb-2">➕ Enregistrer une Cotisation</h2>
@@ -845,22 +875,20 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
             <title>Tableau de bord - Tinka ka Mein Haaldi fotti</title>
             <script src="https://cdn.tailwindcss.com"></script>
             <script>
-                // Fonction pour ouvrir/fermer le panneau de modification compact d'un membre
-                function toggleEdit(id) {{
-                    let box = document.getElementById('edit-box-' + id);
-                    if (box.classList.contains('hidden')) {{
-                        box.classList.remove('hidden');
-                    }} else {{
-                        box.classList.add('hidden');
-                    }}
+                // Fonctions pour ouvrir et fermer les fenêtres pop-up (modales)
+                function openModal(id) {{
+                    document.getElementById('modal-' + id).classList.remove('hidden');
+                }}
+                function closeModal(id) {{
+                    document.getElementById('modal-' + id).classList.add('hidden');
                 }}
 
                 function filtrerAdherents() {{
                     let input = document.getElementById('searchAdherent').value.toLowerCase();
-                    let items = document.getElementsByClassName('adherent-item');
-                    for (let i = 0; i < items.length; i++) {{
-                        let text = items[i].getAttribute('data-search');
-                        items[i].style.display = text.includes(input) ? "" : "none";
+                    let rows = document.getElementsByClassName('adherent-row');
+                    for (let i = 0; i < rows.length; i++) {{
+                        let text = rows[i].getAttribute('data-search');
+                        rows[i].style.display = text.includes(input) ? "" : "none";
                     }}
                 }}
 
