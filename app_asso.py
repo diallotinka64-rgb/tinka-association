@@ -14,7 +14,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="24.0")
+app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="25.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -435,12 +435,15 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
         evt_res = supabase.table("evenements").select("*").execute()
         all_evenements = evt_res.data
 
+        presences_res = supabase.table("presences_association").select("*, adherents(nom, prenom, secteur, telephone)").execute()
+        all_presences = presences_res.data
+
         total_cotis = sum([c['montant'] for c in all_cotisations])
         total_aides_approuvees = sum([ai['montant_demande'] for ai in all_aides if ai['statut_validation'] == 'approuve'])
         total_dec = sum([d['montant'] for d in all_decaissements])
         solde = total_cotis - (total_aides_approuvees + total_dec)
 
-        # Génération du QR Code personnel pour la carte numérique de l'utilisateur
+        # URL pointant directement vers le profil pour le QR code de la carte
         url_profil_personnel = f"https://tinka-association.onrender.com/dashboard?id={user['id']}"
         qr_perso_b64 = generer_qrcode_base64(url_profil_personnel)
 
@@ -587,6 +590,21 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                 </div>
                 """
 
+            # Tableau de suivi en direct des membres présents
+            presences_table_rows = ""
+            for p in all_presences:
+                adh = p.get('adherents', {}) or {}
+                st_pres = p.get('statut_presence', 'Present')
+                badge_color = "bg-emerald-100 text-emerald-800" if st_pres == 'Present' else ("bg-amber-100 text-amber-800" if "excuse" in st_pres else "bg-red-100 text-red-800")
+                presences_table_rows += f"""
+                <tr class="presence-row hover:bg-slate-50 border-b border-slate-100 text-sm" data-search="{adh.get('prenom','').lower()} {adh.get('nom','').lower()} {p.get('evenement_titre','').lower()}">
+                    <td class="p-2.5 font-bold text-slate-900">{adh.get('prenom','')} {adh.get('nom','')}</td>
+                    <td class="p-2.5 text-slate-600">{p.get('evenement_titre','')}</td>
+                    <td class="p-2.5 text-slate-500 text-xs">{p.get('date_reunion','')}</td>
+                    <td class="p-2.5"><span class="text-xs px-2.5 py-1 rounded-full font-bold {badge_color}">{st_pres}</span></td>
+                </tr>
+                """
+
             options_presence_adherents = "".join([f"<option value='{a['id']}' data-text='{a['prenom'].lower()} {a['nom'].lower()} {a['secteur'].lower()}'>{a['prenom']} {a['nom']} — {a['secteur']}</option>" for a in all_actifs])
             options_evenements_titres = "".join([f"<option value='{ev['titre']}'>{ev['titre']} ({ev['date_evenement'][:10]})</option>" for ev in all_evenements]) or "<option value='Réunion Générale Association'>Réunion Générale Association</option>"
 
@@ -659,6 +677,29 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                     </div>
                     <button type="submit" class="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-2.5 rounded-lg text-sm">Enregistrer le pointage</button>
                 </form>
+
+                <!-- Tableau de suivi en direct des membres pointés -->
+                <div class="mt-6 pt-4 border-t border-slate-200">
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="text-sm font-bold text-slate-700 uppercase tracking-wide">Membres pointés ({len(all_presences)})</h3>
+                        <input type="text" id="searchPresences" placeholder="🔍 Filtrer les présents..." onkeyup="filtrerPresencesTable()" class="p-2 text-xs border rounded-lg bg-slate-50 w-48">
+                    </div>
+                    <div class="overflow-x-auto max-h-60 overflow-y-auto border border-slate-200 rounded-xl">
+                        <table class="w-full text-left border-collapse bg-white">
+                            <thead class="bg-slate-100 text-slate-600 text-[10px] uppercase sticky top-0">
+                                <tr>
+                                    <th class="p-2.5">Membre</th>
+                                    <th class="p-2.5">Réunion</th>
+                                    <th class="p-2.5">Date</th>
+                                    <th class="p-2.5">Statut</th>
+                                </tr>
+                            </thead>
+                            <tbody id="presencesTableBody">
+                                {presences_table_rows or '<tr><td colspan="4" class="text-center p-4 text-slate-400 text-xs">Aucun pointage enregistré pour le moment.</td></tr>'}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
 
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
@@ -901,6 +942,15 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                     for (let i = 1; i < options.length; i++) {{
                         let text = options[i].getAttribute('data-text');
                         options[i].style.display = text.includes(input) ? "" : "none";
+                    }}
+                }}
+
+                function filtrerPresencesTable() {{
+                    let input = document.getElementById('searchPresences').value.toLowerCase();
+                    let rows = document.getElementsByClassName('presence-row');
+                    for (let i = 0; i < rows.length; i++) {{
+                        let text = rows[i].getAttribute('data-search');
+                        rows[i].style.display = text.includes(input) ? "" : "none";
                     }}
                 }}
 
