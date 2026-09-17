@@ -14,7 +14,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="25.0")
+app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="26.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -435,15 +435,17 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
         evt_res = supabase.table("evenements").select("*").execute()
         all_evenements = evt_res.data
 
-        presences_res = supabase.table("presences_association").select("*, adherents(nom, prenom, secteur, telephone)").execute()
-        all_presences = presences_res.data
+        try:
+            presences_res = supabase.table("presences_association").select("*, adherents(nom, prenom, secteur, telephone)").execute()
+            all_presences = presences_res.data
+        except Exception:
+            all_presences = []
 
         total_cotis = sum([c['montant'] for c in all_cotisations])
         total_aides_approuvees = sum([ai['montant_demande'] for ai in all_aides if ai['statut_validation'] == 'approuve'])
         total_dec = sum([d['montant'] for d in all_decaissements])
         solde = total_cotis - (total_aides_approuvees + total_dec)
 
-        # URL pointant directement vers le profil pour le QR code de la carte
         url_profil_personnel = f"https://tinka-association.onrender.com/dashboard?id={user['id']}"
         qr_perso_b64 = generer_qrcode_base64(url_profil_personnel)
 
@@ -590,7 +592,6 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                 </div>
                 """
 
-            # Tableau de suivi en direct des membres présents
             presences_table_rows = ""
             for p in all_presences:
                 adh = p.get('adherents', {}) or {}
@@ -644,7 +645,20 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
             </div>
 
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
-                <h2 class="text-lg font-bold text-teal-700 mb-4 border-b pb-2">📋 Pointage & Présences aux Réunions (Association)</h2>
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 border-b pb-2 gap-2">
+                    <h2 class="text-lg font-bold text-teal-700">📋 Pointage & Scanner QR Code</h2>
+                    <button type="button" onclick="toggleScanner()" class="bg-teal-600 hover:bg-teal-700 text-white px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow">
+                        📷 Ouvrir / Fermer le Scanner Caméra
+                    </button>
+                </div>
+
+                <!-- Boîte du scanner caméra (Cachée par défaut) -->
+                <div id="scanner-container" class="hidden mb-6 p-4 bg-slate-900 rounded-2xl text-center">
+                    <p class="text-xs text-emerald-400 font-bold mb-2">Pointez la caméra du téléphone vers le QR Code de la carte du membre</p>
+                    <div id="reader" class="mx-auto max-w-sm rounded-xl overflow-hidden bg-black"></div>
+                    <p id="scan-result" class="text-xs text-white mt-3 font-mono"></p>
+                </div>
+
                 <form action="/presences-form" method="POST" class="space-y-4">
                     <input type="hidden" name="user_id" value="{user['id']}">
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -660,10 +674,10 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                         </div>
                     </div>
                     <div>
-                        <label class="block text-xs font-bold text-slate-600 mb-1">Rechercher et Pointer un Membre</label>
-                        <input type="text" id="searchSelectPresence" placeholder="🔍 Taper un nom, prénom ou secteur..." onkeyup="filtrerSelectPresence()" class="w-full p-2.5 mb-2 border rounded-lg text-sm bg-slate-50 focus:ring-2 focus:ring-teal-500 focus:outline-none">
+                        <label class="block text-xs font-bold text-slate-600 mb-1">Membre sélectionné (ou scanné par QR Code)</label>
+                        <input type="text" id="searchSelectPresence" placeholder="🔍 Taper un nom ou scanner une carte..." onkeyup="filtrerSelectPresence()" class="w-full p-2.5 mb-2 border rounded-lg text-sm bg-slate-50 focus:ring-2 focus:ring-teal-500 focus:outline-none">
                         <select name="adherent_id" id="selectPresenceAdherent" required class="w-full p-2.5 border rounded-lg text-sm bg-white" size="4">
-                            <option value="">-- Choisir un membre --</option>
+                            <option value="">-- Choisir ou scanner un membre --</option>
                             {options_presence_adherents}
                         </select>
                     </div>
@@ -675,10 +689,9 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                             <option value="Absent_non_excuse">🔴 Absent(e) non excusé(e)</option>
                         </select>
                     </div>
-                    <button type="submit" class="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-2.5 rounded-lg text-sm">Enregistrer le pointage</button>
+                    <button type="submit" class="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-2.5 rounded-lg text-sm shadow">Enregistrer le pointage</button>
                 </form>
 
-                <!-- Tableau de suivi en direct des membres pointés -->
                 <div class="mt-6 pt-4 border-t border-slate-200">
                     <div class="flex justify-between items-center mb-3">
                         <h3 class="text-sm font-bold text-slate-700 uppercase tracking-wide">Membres pointés ({len(all_presences)})</h3>
@@ -825,7 +838,6 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                     aides_membre_html += f"<li class='py-2 border-b border-slate-100 text-sm'>Motif : <b>{ai['motif']}</b> ({montant_ai_fmt} CFA) — Statut : <span class='font-bold text-amber-600'>{ai['statut_validation']}</span></li>"
 
             member_sections_html = f"""
-            <!-- CARTE DE MEMBRE NUMÉRIQUE OFFICIELLE -->
             <div class="bg-gradient-to-br from-slate-900 via-slate-800 to-emerald-950 text-white p-6 rounded-3xl shadow-xl border border-slate-700 mb-6 relative overflow-hidden">
                 <div class="absolute -right-10 -bottom-10 w-40 h-40 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none"></div>
                 
@@ -908,7 +920,66 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>Tableau de bord - Tinka ka Mein Haaldi fotti</title>
             <script src="https://cdn.tailwindcss.com"></script>
+            <!-- Inclusion de la librairie JavaScript pour scanner les QR Codes par Caméra -->
+            <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
             <script>
+                let html5QrCode = null;
+
+                function toggleScanner() {{
+                    let container = document.getElementById('scanner-container');
+                    if (container.classList.contains('hidden')) {{
+                        container.classList.remove('hidden');
+                        startScanner();
+                    }} else {{
+                        container.classList.add('hidden');
+                        stopScanner();
+                    }}
+                }}
+
+                function startScanner() {{
+                    if (!html5QrCode) {{
+                        html5QrCode = new Html5Qrcode("reader");
+                    }}
+                    html5QrCode.start(
+                        {{ facingMode: "environment" }},
+                        {{ fps: 10, qrbox: {{ width: 250, height: 250 }} }},
+                        (decodedText, decodedResult) => {{
+                            // Le QR code contient une URL du type .../dashboard?id=XX
+                            document.getElementById('scan-result').innerText = "✅ Scanné avec succès : " + decodedText;
+                            
+                            // Extraction de l'ID de l'adhérent s'il est présent dans l'URL
+                            let urlParams = new URLSearchParams(decodedText.split('?')[1]);
+                            let scannedId = urlParams.get('id');
+                            
+                            if (scannedId) {{
+                                let select = document.getElementById('selectPresenceAdherent');
+                                select.value = scannedId;
+                                // Animation visuelle de confirmation
+                                select.classList.add('bg-emerald-100');
+                                setTimeout(() => select.classList.remove('bg-emerald-100'), 1500);
+                                
+                                // Fermeture automatique du scanner après un scan réussi
+                                toggleScanner();
+                            }}
+                        }},
+                        (errorMessage) => {{
+                            // Erreur de scan en cours (ignorée pour laisser tourner la caméra)
+                        }}
+                    ).catch((err) => {{
+                        alert("Impossible d'accéder à la caméra : " + err);
+                    }});
+                }}
+
+                function stopScanner() {{
+                    if (html5QrCode && html5QrCode.isScanning) {{
+                        html5QrCode.stop().then(() => {{
+                            console.log("Scanner arrêté.");
+                        }}).catch((err) => {{
+                            console.error("Erreur à l'arrêt du scanner.", err);
+                        }});
+                    }}
+                }}
+
                 function openModal(id) {{
                     document.getElementById('modal-' + id).classList.remove('hidden');
                 }}
