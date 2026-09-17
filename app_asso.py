@@ -14,7 +14,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="23.0")
+app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="24.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -440,6 +440,10 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
         total_dec = sum([d['montant'] for d in all_decaissements])
         solde = total_cotis - (total_aides_approuvees + total_dec)
 
+        # Génération du QR Code personnel pour la carte numérique de l'utilisateur
+        url_profil_personnel = f"https://tinka-association.onrender.com/dashboard?id={user['id']}"
+        qr_perso_b64 = generer_qrcode_base64(url_profil_personnel)
+
         finance_sections_html = ""
         if is_tresorier:
             options_adherents = "".join([f"<option value='{a['id']}' data-text='{a['prenom'].lower()} {a['nom'].lower()} {a['secteur'].lower()} {a['telephone']}'>{a['prenom']} {a['nom']} — Secteur: {a['secteur']} (Tél: {a['telephone']})</option>" for a in all_actifs if a['role'] != 'admin'])
@@ -522,7 +526,6 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
 
                 search_str = f"{a['prenom']} {a['nom']} {a['telephone']} {a['secteur']}".lower()
                 
-                # Ligne de tableau ultra compacte (style tableau de données)
                 adherents_table_rows += f"""
                 <tr class="adherent-row hover:bg-slate-50 border-b border-slate-100 text-sm" data-search="{search_str}">
                     <td class="p-2.5 flex items-center font-medium text-slate-900">{photo_tag}{a['prenom']} {a['nom']}</td>
@@ -537,7 +540,6 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                 </tr>
                 """
 
-                # Modale (fenêtre flottante) pour modifier chaque membre proprement sans scroller
                 modals_html += f"""
                 <div id="modal-{a['id']}" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
                     <div class="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-100">
@@ -719,7 +721,6 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                     <input type="text" id="searchAdherent" placeholder="🔍 Rechercher (nom, prénom, tél)..." onkeyup="filtrerAdherents()" class="p-2.5 text-xs border rounded-lg bg-slate-50 w-full sm:w-72 focus:ring-2 focus:ring-emerald-500 focus:outline-none font-semibold">
                 </div>
                 
-                <!-- Format Tableau de Données Ultra Compact -->
                 <div class="overflow-x-auto max-h-[450px] overflow-y-auto border border-slate-200 rounded-xl">
                     <table class="w-full text-left border-collapse bg-white">
                         <thead class="bg-slate-100 text-slate-600 text-xs uppercase sticky top-0 z-10 shadow-sm">
@@ -739,7 +740,6 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                 </div>
             </div>
 
-            <!-- Modales de modification (S'ouvrent en pop-up sans défiler) -->
             {modals_html}
 
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
@@ -762,45 +762,6 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                     <button type="submit" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2.5 rounded-lg text-sm">Valider la cotisation</button>
                 </form>
             </div>
-
-            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
-                <h2 class="text-lg font-bold text-emerald-600 mb-4 border-b pb-2">📅 Planifier un Événement / Réunion</h2>
-                <form action="/evenements-form" method="POST" class="space-y-4">
-                    <input type="hidden" name="user_id" value="{user['id']}">
-                    <div><label class="block text-xs font-bold text-slate-600 mb-1">Titre</label><input type="text" name="titre" required class="w-full p-2.5 border rounded-lg text-sm"></div>
-                    <div><label class="block text-xs font-bold text-slate-600 mb-1">Description / Ordre du jour</label><textarea name="description" rows="2" required class="w-full p-2.5 border rounded-lg text-sm"></textarea></div>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Date et Heure</label><input type="datetime-local" name="date_evenement" required class="w-full p-2.5 border rounded-lg text-sm"></div>
-                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Lieu</label><input type="text" name="lieu" required class="w-full p-2.5 border rounded-lg text-sm"></div>
-                    </div>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Type</label><select name="type_evenement" class="w-full p-2.5 border rounded-lg text-sm bg-white"><option value="Assemblee Generale">Assemblée Générale</option><option value="Reunion Bureau">Réunion du Bureau</option><option value="Evenement Daara">Événement Daara Tinka</option><option value="Ceremonie">Cérémonie</option></select></div>
-                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Statut</label><select name="statut" class="w-full p-2.5 border rounded-lg text-sm bg-white"><option value="prevu" selected>Prévu</option><option value="en_cours">En cours</option><option value="termine">Terminé</option></select></div>
-                    </div>
-                    <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-lg text-sm">Programmer l'événement</button>
-                </form>
-            </div>
-
-            {f'''
-            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
-                <h2 class="text-lg font-bold text-indigo-600 mb-4 border-b pb-2">🚀 Ajouter un Projet (Bureau)</h2>
-                <form action="/projets-form" method="POST" enctype="multipart/form-data" class="space-y-4">
-                    <input type="hidden" name="user_id" value="{user['id']}">
-                    <div><label class="block text-xs font-bold text-slate-600 mb-1">Titre</label><input type="text" name="titre" required class="w-full p-2.5 border rounded-lg text-sm"></div>
-                    <div><label class="block text-xs font-bold text-slate-600 mb-1">Description</label><textarea name="description" rows="2" class="w-full p-2.5 border rounded-lg text-sm"></textarea></div>
-                    <div><label class="block text-xs font-bold text-slate-600 mb-1">Objectifs</label><textarea name="objectifs" rows="2" class="w-full p-2.5 border rounded-lg text-sm"></textarea></div>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Coût Prévu (CFA)</label><input type="number" name="cout" required class="w-full p-2.5 border rounded-lg text-sm"></div>
-                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Photo du projet</label><input type="file" name="file_projet" accept="image/*" class="w-full text-xs text-slate-500 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:text-indigo-700"></div>
-                    </div>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Chronologie</label><select name="chronologie" class="w-full p-2.5 border rounded-lg text-sm bg-white"><option value="passe">Passé</option><option value="actuel" selected>Actuel</option><option value="avenir">À venir</option></select></div>
-                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Statut</label><select name="statut" class="w-full p-2.5 border rounded-lg text-sm bg-white"><option value="planifie">Planifié</option><option value="en_cours">En cours</option><option value="termine">Terminé</option></select></div>
-                    </div>
-                    <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-lg text-sm">Ajouter le projet</button>
-                </form>
-            </div>
-            ''' if is_admin else ''}
             """
 
         member_sections_html = ""
@@ -823,6 +784,38 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                     aides_membre_html += f"<li class='py-2 border-b border-slate-100 text-sm'>Motif : <b>{ai['motif']}</b> ({montant_ai_fmt} CFA) — Statut : <span class='font-bold text-amber-600'>{ai['statut_validation']}</span></li>"
 
             member_sections_html = f"""
+            <!-- CARTE DE MEMBRE NUMÉRIQUE OFFICIELLE -->
+            <div class="bg-gradient-to-br from-slate-900 via-slate-800 to-emerald-950 text-white p-6 rounded-3xl shadow-xl border border-slate-700 mb-6 relative overflow-hidden">
+                <div class="absolute -right-10 -bottom-10 w-40 h-40 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none"></div>
+                
+                <div class="flex justify-between items-start mb-6">
+                    <div>
+                        <span class="text-[10px] bg-emerald-500/20 text-emerald-400 font-bold px-3 py-1 rounded-full uppercase tracking-widest border border-emerald-500/30">Carte d'Adhérent Officielle</span>
+                        <h2 class="text-xl font-black tracking-tight mt-2">Tinka ka Mein Haaldi fotti</h2>
+                    </div>
+                    <span class="text-xs uppercase bg-blue-500/20 text-blue-300 font-bold px-2.5 py-1 rounded-lg border border-blue-500/30">{user['role']}</span>
+                </div>
+
+                <div class="flex flex-col sm:flex-row items-center gap-6 bg-white/5 p-4 rounded-2xl backdrop-blur-md border border-white/10">
+                    <div class="text-center sm:text-left flex items-center gap-4 w-full">
+                        <div class="w-20 h-20 rounded-2xl bg-slate-700 overflow-hidden flex-shrink-0 border-2 border-emerald-500 shadow-md">
+                            {"<img src='" + user['photo_profil'] + "' class='w-full h-full object-cover'>" if user['photo_profil'] else "<div class='w-full h-full flex items-center justify-center font-bold text-xl text-white'>" + user['prenom'][0] + "</div>"}
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-bold text-white">{user['prenom']} {user['nom']}</h3>
+                            <p class="text-xs text-slate-300 mt-0.5">Secteur : <span class="text-emerald-400 font-semibold">{user['secteur']}</span></p>
+                            <p class="text-xs text-slate-300">Tél : <span class="font-mono text-slate-200">{user['telephone']}</span></p>
+                            <p class="text-[10px] text-emerald-400 font-bold mt-2">✨ Statut : Compte Vérifié & Actif</p>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-white p-2.5 rounded-xl shadow-inner text-center flex-shrink-0">
+                        <img src="data:image/png;base64,{qr_perso_b64}" alt="QR Code Personnel" class="w-28 h-28 rounded">
+                        <span class="block text-[9px] font-bold text-slate-700 mt-1 uppercase">ID: {user['id']}</span>
+                    </div>
+                </div>
+            </div>
+
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
                 <h2 class="text-lg font-bold text-emerald-700 mb-4 border-b pb-2">📋 Mon Suivi de Cotisations ({annee_courante})</h2>
                 <ul class="max-h-60 overflow-y-auto">{mois_payes_html or '<li class="text-sm text-slate-400">Aucun versement enregistré.</li>'}{mois_retard_html}</ul>
@@ -875,7 +868,6 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
             <title>Tableau de bord - Tinka ka Mein Haaldi fotti</title>
             <script src="https://cdn.tailwindcss.com"></script>
             <script>
-                // Fonctions pour ouvrir et fermer les fenêtres pop-up (modales)
                 function openModal(id) {{
                     document.getElementById('modal-' + id).classList.remove('hidden');
                 }}
