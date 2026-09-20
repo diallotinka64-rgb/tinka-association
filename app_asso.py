@@ -103,7 +103,7 @@ async def creer_adherent_form(
         }).execute()
         return HTMLResponse(content="<script>alert('Compte créé avec succès ! En attente de validation.'); window.location.href='/';</script>")
     except Exception as e:
-        return HTMLResponse(content=f"<script>alert('Erreur : Ce numéro de téléphone existe déjà ou un problème est survenu.'); window.location.href='/';</script>")
+        return HTMLResponse(content=f"<script>alert('Erreur : Ce numéro de téléphone existe déjà.'); window.location.href='/';</script>")
 
 @app.post("/modifier-photo")
 async def modifier_photo(user_id: int = Form(...), file_photo: UploadFile = File(...)):
@@ -443,17 +443,20 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
         evt_res = supabase.table("evenements").select("*").execute()
         all_evenements = evt_res.data
 
+        try:
+            presences_res = supabase.table("presences_association").select("*, adherents(nom, prenom, secteur, telephone)").execute()
+            all_presences = presences_res.data
+        except Exception:
+            all_presences = []
+
         # Récupération du solde initial de la caisse
         param_res = supabase.table("parametres").select("solde_initial").eq("id", 1).execute()
         solde_initial = param_res.data[0]['solde_initial'] if param_res.data else 0.0
 
-        # Calcul financier : On exclut les cotisations de type "regularisation" pour le calcul de l'argent physique en caisse
         cotisations_caisse = sum([c['montant'] for c in all_cotisations if c.get('mode_paiement') != 'regularisation'])
-        total_cotis_global = sum([c['montant'] for c in all_cotisations])
         total_aides_approuvees = sum([ai['montant_demande'] for ai in all_aides if ai['statut_validation'] == 'approuve'])
         total_dec = sum([d['montant'] for d in all_decaissements])
         
-        # Solde réel en caisse = Solde initial + Cotisations standard - Aides - Dépenses
         solde = solde_initial + cotisations_caisse - (total_aides_approuvees + total_dec)
 
         url_profil_personnel = f"https://tinka-association.onrender.com/dashboard?id={user['id']}"
@@ -464,6 +467,7 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
             options_adherents = "".join([f"<option value='{a['id']}' data-text='{a['prenom'].lower()} {a['nom'].lower()} {a['secteur'].lower()} {a['telephone']}'>{a['prenom']} {a['nom']} — Secteur: {a['secteur']} (Tél: {a['telephone']})</option>" for a in all_actifs if a['role'] != 'admin'])
             
             suivi_retards_html = ""
+            relances_whatsapp_html = ""
             for a in all_actifs:
                 cotis_membre = [c['periode'] for c in all_cotisations if c['adherent_id'] == a['id']]
                 mois_manquants = [m for m in mois_12 if m not in cotis_membre]
@@ -473,6 +477,22 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                 else:
                     nb_retard = len(mois_manquants)
                     statut_ajour = f"<span class='text-red-600 font-bold'>Retard ({nb_retard} mois)</span>"
+                    
+                    msg_whatsapp = urllib.parse.quote(f"Bonjour {a['prenom']} {a['nom']}, le bureau de Tinka ka Mein Haaldi fotti vous rappelle que vous avez {nb_retard} mois de cotisation en retard ({', '.join(mois_manquants)}). Merci de régulariser.")
+                    tel = a.get('telephone', '').replace('+', '').replace(' ', '')
+
+                    relances_whatsapp_html += f"""
+                    <div class="relance-item bg-red-50 p-4 rounded-xl border border-red-100 mb-3 text-sm" data-search="{a['prenom'].lower()} {a['nom'].lower()} {a['secteur'].lower()} {tel}">
+                        <div class="flex justify-between items-center">
+                            <div><b>{a['prenom']} {a['nom']}</b> <span class='text-xs text-slate-500'>({a['secteur']} - +{tel})</span></div>
+                            <span class="text-red-700 font-bold text-xs bg-red-100 px-2.5 py-1 rounded-full">{nb_retard} mois manquant(s)</span>
+                        </div>
+                        <div class="text-xs text-slate-600 mt-1">Mois en retard : {', '.join(mois_manquants)}</div>
+                        <div class="mt-2">
+                            <a href="https://wa.me/{tel}?text={msg_whatsapp}" target="_blank" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold inline-flex items-center gap-1.5 shadow-sm">💚 Relancer par WhatsApp</a>
+                        </div>
+                    </div>
+                    """
 
                 suivi_retards_html += f"<li class='py-1.5 border-b border-slate-100 flex justify-between items-center text-sm'><span><b>{a['prenom']} {a['nom']}</b> <span class='text-xs text-slate-400'>({a['secteur']})</span></span> {statut_ajour}</li>"
 
@@ -486,6 +506,102 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
 
             options_filtre_mois = "".join([f"<option value='{m}' {'selected' if filtre_periode==m else ''}>{m}</option>" for m in mois_12])
 
+            categories_dict = {}
+            for d in all_decaissements:
+                cat = d.get('categorie', 'Divers') or 'Divers'
+                categories_dict[cat] = categories_dict.get(cat, 0) + d['montant']
+            
+            repartition_depenses_html = ""
+            for cat, montant_cat in categories_dict.items():
+                repartition_depenses_html += f"<li class='flex justify-between py-1 text-sm border-b border-slate-100'><span>{cat}</span><span class='font-bold text-red-600'>{formater_montant(montant_cat)} CFA</span></li>"
+
+            adherents_table_rows = ""
+            modals_html = ""
+            for a in all_adherents:
+                actions_admin = ""
+                if a['statut'] == 'en_attente':
+                    actions_admin += f"""
+                    <form action="/admin/valider-adherent" method="POST" class="inline">
+                        <input type="hidden" name="user_id" value="{user['id']}"><input type="hidden" name="adherent_id" value="{a['id']}">
+                        <button type="submit" class="bg-emerald-600 text-white px-2 py-1 rounded text-xs font-bold">Valider</button>
+                    </form>"""
+                
+                if is_admin:
+                    actions_admin += f"""
+                    <form action="/admin/changer-role" method="POST" class="inline-block ml-1">
+                        <input type="hidden" name="user_id" value="{user['id']}"><input type="hidden" name="adherent_id" value="{a['id']}">
+                        <select name="nouveau_role" onchange="this.form.submit()" class="p-1 text-xs border rounded bg-white font-semibold text-blue-700">
+                            <option value="membre" {'selected' if a['role']=='membre' else ''}>Membre</option>
+                            <option value="tresorier" {'selected' if a['role']=='tresorier' else ''}>Trésorier</option>
+                            <option value="admin" {'selected' if a['role']=='admin' else ''}>Admin</option>
+                        </select>
+                    </form>
+                    """
+
+                photo_tag = f"<img src='{a['photo_profil']}' class='w-7 h-7 rounded-full object-cover mr-2' onerror='this.style.display=\"none\"'>" if a['photo_profil'] else "<div class='w-7 h-7 rounded-full bg-slate-200 flex items-center justify-center font-bold text-slate-500 text-[10px] mr-2'>" + a['prenom'][0] + "</div>"
+                search_str = f"{a['prenom']} {a['nom']} {a['telephone']} {a['secteur']}".lower()
+                
+                adherents_table_rows += f"""
+                <tr class="adherent-row hover:bg-slate-50 border-b border-slate-100 text-sm" data-search="{search_str}">
+                    <td class="p-2.5 flex items-center font-medium text-slate-900">{photo_tag}{a['prenom']} {a['nom']}</td>
+                    <td class="p-2.5 text-slate-600"><span class="text-xs bg-slate-100 px-2 py-0.5 rounded font-semibold uppercase">{a['role']}</span></td>
+                    <td class="p-2.5 text-slate-600">{a['secteur']}</td>
+                    <td class="p-2.5 text-slate-600 font-mono text-xs">{a['telephone']}</td>
+                    <td class="p-2.5 text-slate-600"><span class="text-xs font-bold text-slate-500">{a['statut']}</span></td>
+                    <td class="p-2.5 text-right space-x-1">
+                        {actions_admin}
+                        <button onclick="openModal({a['id']})" class="bg-blue-50 hover:bg-blue-100 text-blue-700 px-2.5 py-1 rounded text-xs font-bold">⚙️ Modifier</button>
+                    </td>
+                </tr>
+                """
+
+                modals_html += f"""
+                <div id="modal-{a['id']}" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+                    <div class="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-100">
+                        <div class="flex justify-between items-center mb-4 border-b pb-2">
+                            <h3 class="font-bold text-lg text-slate-900">Modifier : {a['prenom']} {a['nom']}</h3>
+                            <button onclick="closeModal({a['id']})" class="text-slate-400 hover:text-slate-700 font-bold text-lg">✕</button>
+                        </div>
+                        <form action="/admin/modifier-adherent" method="POST" class="space-y-3 mb-6">
+                            <input type="hidden" name="user_id" value="{user['id']}">
+                            <input type="hidden" name="adherent_id" value="{a['id']}">
+                            <div class="grid grid-cols-2 gap-3">
+                                <div><label class="block text-xs font-bold text-slate-600 mb-1">Prénom</label><input type="text" name="prenom" value="{a['prenom']}" required class="w-full p-2 text-sm border rounded-lg bg-white"></div>
+                                <div><label class="block text-xs font-bold text-slate-600 mb-1">Nom</label><input type="text" name="nom" value="{a['nom']}" required class="w-full p-2 text-sm border rounded-lg bg-white"></div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div><label class="block text-xs font-bold text-slate-600 mb-1">Téléphone (ID)</label><input type="text" name="telephone" value="{a['telephone']}" required class="w-full p-2 text-sm border rounded-lg bg-white"></div>
+                                <div><label class="block text-xs font-bold text-slate-600 mb-1">Secteur</label><input type="text" name="secteur" value="{a['secteur']}" required class="w-full p-2 text-sm border rounded-lg bg-white"></div>
+                            </div>
+                            <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2 rounded-lg text-sm font-bold shadow">Enregistrer</button>
+                        </form>
+                        <form action="/admin/reset-password" method="POST" class="pt-4 border-t border-slate-200 space-y-3">
+                            <input type="hidden" name="user_id" value="{user['id']}">
+                            <input type="hidden" name="adherent_id" value="{a['id']}">
+                            <div><label class="block text-xs font-bold text-amber-700 mb-1">Réinitialiser le mot de passe</label><input type="text" name="nouveau_mdp" placeholder="Nouveau mot de passe" required class="w-full p-2 text-sm border rounded-lg bg-white mb-2"></div>
+                            <button type="submit" class="w-full bg-amber-600 hover:bg-amber-700 text-white py-2 rounded-lg text-sm font-bold shadow">Mettre à jour le mot de passe</button>
+                        </form>
+                    </div>
+                </div>
+                """
+
+            presences_table_rows = ""
+            for p in all_presences:
+                adh = p.get('adherents', {}) or {}
+                st_pres = p.get('statut_presence', 'Present')
+                badge_color = "bg-emerald-100 text-emerald-800" if st_pres == 'Present' else ("bg-amber-100 text-amber-800" if "excuse" in st_pres else "bg-red-100 text-red-800")
+                presences_table_rows += f"""
+                <tr class="presence-row hover:bg-slate-50 border-b border-slate-100 text-sm" data-search="{adh.get('prenom','').lower()} {adh.get('nom','').lower()} {p.get('evenement_titre','').lower()}">
+                    <td class="p-2.5 font-bold text-slate-900">{adh.get('prenom','')} {adh.get('nom','')}</td>
+                    <td class="p-2.5 text-slate-600">{p.get('evenement_titre','')}</td>
+                    <td class="p-2.5 text-slate-500 text-xs">{p.get('date_reunion','')}</td>
+                    <td class="p-2.5"><span class="text-xs px-2.5 py-1 rounded-full font-bold {badge_color}">{st_pres}</span></td>
+                </tr>
+                """
+
+            options_presence_adherents = "".join([f"<option value='{a['id']}' data-text='{a['prenom'].lower()} {a['nom'].lower()} {a['secteur'].lower()}'>{a['prenom']} {a['nom']} — {a['secteur']}</option>" for a in all_actifs])
+            options_evenements_titres = "".join([f"<option value='{ev['titre']}'>{ev['titre']} ({ev['date_evenement'][:10]})</option>" for ev in all_evenements]) or "<option value='Réunion Générale'>Réunion Générale</option>"
+
             solde_initial_fmt = formater_montant(solde_initial)
             solde_fmt = formater_montant(solde)
 
@@ -493,14 +609,13 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
                 <h2 class="text-lg font-bold text-emerald-700 mb-4 border-b pb-2">💼 Gestion du Solde Initial & Trésorerie</h2>
                 
-                <!-- Formulaire de configuration du solde initial réel compté -->
                 <form action="/admin/maj-solde-initial" method="POST" class="bg-emerald-50 p-4 rounded-xl border border-emerald-100 mb-6 flex flex-col sm:flex-row gap-3 items-end">
                     <input type="hidden" name="user_id" value="{user['id']}">
                     <div class="w-full sm:flex-1">
                         <label class="block text-xs font-bold text-emerald-800 mb-1">Montant total compté en caisse (Solde Initial Réel)</label>
                         <input type="number" name="solde_initial" value="{solde_initial}" required class="w-full p-2.5 text-sm bg-white border border-emerald-300 rounded-lg">
                     </div>
-                    <button type="submit" class="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-5 rounded-lg text-sm shadow">Mettre à jour le solde de départ</button>
+                    <button type="submit" class="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-5 rounded-lg text-sm shadow">Mettre à jour</button>
                 </form>
 
                 <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4 text-center">
@@ -510,9 +625,75 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                 </div>
                 <div class="text-center bg-slate-900 text-white py-3 rounded-xl font-bold text-lg mb-6">Solde Réel en Caisse : <span class="text-emerald-400">{solde_fmt} CFA</span></div>
 
-                <h3 class="text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">État des cotisations (Exercice en cours)</h3>
+                <h3 class="text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Répartition des Dépenses</h3>
+                <ul class="mb-6">{repartition_depenses_html or '<li class="text-sm text-slate-400">Aucune dépense.</li>'}</ul>
+
+                <h3 class="text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">État des cotisations</h3>
                 <ul class="max-h-60 overflow-y-auto pr-2">{suivi_retards_html}</ul>
             </div>
+
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 border-b pb-2 gap-2">
+                    <h2 class="text-lg font-bold text-teal-700">📋 Pointage & Scanner QR Code</h2>
+                    <button type="button" onclick="toggleScanner()" class="bg-teal-600 hover:bg-teal-700 text-white px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow">📷 Ouvrir / Fermer le Scanner Caméra</button>
+                </div>
+
+                <div id="scanner-container" class="hidden mb-6 p-4 bg-slate-900 rounded-2xl text-center">
+                    <p class="text-xs text-emerald-400 font-bold mb-2">Pointez la caméra vers le QR Code de la carte du membre</p>
+                    <div id="reader" class="mx-auto max-w-sm rounded-xl overflow-hidden bg-black"></div>
+                    <p id="scan-result" class="text-xs text-white mt-3 font-mono"></p>
+                </div>
+
+                <form action="/presences-form" method="POST" class="space-y-4">
+                    <input type="hidden" name="user_id" value="{user['id']}">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-600 mb-1">Événement / Réunion</label>
+                            <select name="evenement_titre" required class="w-full p-2.5 border rounded-lg text-sm bg-white">{options_evenements_titres}</select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-600 mb-1">Date</label>
+                            <input type="date" name="date_reunion" required class="w-full p-2.5 border rounded-lg text-sm bg-white">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">Membre (ou scanné par QR Code)</label>
+                        <input type="text" id="searchSelectPresence" placeholder="🔍 Filtrer le membre..." onkeyup="filtrerSelectPresence()" class="w-full p-2.5 mb-2 border rounded-lg text-sm bg-slate-50">
+                        <select name="adherent_id" id="selectPresenceAdherent" required class="w-full p-2.5 border rounded-lg text-sm bg-white" size="4">
+                            <option value="">-- Choisir un membre --</option>
+                            {options_presence_adherents}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">Statut</label>
+                        <select name="statut_presence" required class="w-full p-2.5 border rounded-lg text-sm bg-white">
+                            <option value="Present">🟢 Présent(e)</option>
+                            <option value="Absent_excuse">🟡 Absent(e) excusé(e)</option>
+                            <option value="Absent_non_excuse">🔴 Absent(e) non excusé(e)</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-2.5 rounded-lg text-sm shadow">Enregistrer le pointage</button>
+                </form>
+            </div>
+
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
+                <div class="flex flex-col sm:flex-row justify-between items-center mb-4 border-b pb-2 gap-2">
+                    <div>
+                        <h2 class="text-lg font-bold text-slate-700">👥 Annuaire des Adhérents ({len(all_adherents)})</h2>
+                    </div>
+                    <input type="text" id="searchAdherent" placeholder="🔍 Rechercher..." onkeyup="filtrerAdherents()" class="p-2 text-xs border rounded-lg bg-slate-50 w-64">
+                </div>
+                <div class="overflow-x-auto max-h-[400px] overflow-y-auto border border-slate-200 rounded-xl">
+                    <table class="w-full text-left border-collapse bg-white">
+                        <thead class="bg-slate-100 text-slate-600 text-xs uppercase sticky top-0 z-10">
+                            <tr><th class="p-2.5">Nom & Prénom</th><th class="p-2.5">Rôle</th><th class="p-2.5">Secteur</th><th class="p-2.5">Téléphone</th><th class="p-2.5">Statut</th><th class="p-2.5 text-right">Actions</th></tr>
+                        </thead>
+                        <tbody id="adherentsTableBody">{adherents_table_rows}</tbody>
+                    </table>
+                </div>
+            </div>
+
+            {modals_html}
 
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
                 <h2 class="text-lg font-bold text-purple-600 mb-4 border-b pb-2">➕ Enregistrer une Cotisation ou Régularisation</h2>
@@ -542,23 +723,86 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
             </div>
             """
 
-        # Espace membre classique...
+        member_sections_html = ""
+        if not is_tresorier:
+            cotis_perso = [c for c in all_cotisations if c['adherent_id'] == user['id']]
+            mois_payes_list = [c['periode'] for c in cotis_perso]
+            mois_payes_html = "".join([f"<li class='py-2 border-b border-slate-100 text-sm flex justify-between items-center'><span>Mois de <b>{c['periode']}</b> : <span class='text-emerald-600 font-bold'>Payé ({formater_montant(c['montant'])} CFA)</span></span> <a href='/cotisation/recu-pdf/{c['id']}' target='_blank' class='bg-blue-600 text-white px-2.5 py-1 rounded text-xs font-semibold'>Reçu PDF</a></li>" for c in cotis_perso])
+            
+            member_sections_html = f"""
+            <div class="bg-gradient-to-br from-slate-900 to-emerald-950 text-white p-6 rounded-3xl shadow-xl mb-6">
+                <h2 class="text-xl font-black">Carte d'Adhérent — {user['prenom']} {user['nom']}</h2>
+                <p class="text-xs text-slate-300 mt-1">Secteur : {user['secteur']} | Tél : {user['telephone']}</p>
+                <div class="bg-white p-3 rounded-xl inline-block mt-4 text-center">
+                    <img src="data:image/png;base64,{qr_perso_b64}" alt="QR Code" class="w-28 h-28 rounded">
+                    <span class="block text-[9px] font-bold text-slate-700 mt-1 uppercase">ID: {user['id']}</span>
+                </div>
+            </div>
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
+                <h2 class="text-lg font-bold text-emerald-700 mb-4 border-b pb-2">📋 Mon Suivi de Cotisations</h2>
+                <ul class="max-h-60 overflow-y-auto">{mois_payes_html or '<li class="text-sm text-slate-400">Aucun versement.</li>'}</ul>
+            </div>
+            """
+
+        user_photo = f"<img src='{user['photo_profil']}' class='w-16 h-16 rounded-full object-cover shadow-sm' onerror='this.style.display=\"none\"'>" if user['photo_profil'] else "<div class='w-16 h-16 rounded-full bg-slate-200 flex items-center justify-center font-bold text-slate-500 text-xl'>" + user['prenom'][0] + "</div>"
+
         return f"""
         <!DOCTYPE html>
         <html lang="fr">
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Tableau de bord - Tinka ka Mein Haaldi fotti</title>
+            <title>Dashboard - Tinka</title>
             <script src="https://cdn.tailwindcss.com"></script>
+            <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+            <script>
+                let html5QrCode = null;
+                function toggleScanner() {{
+                    let container = document.getElementById('scanner-container');
+                    if (container.classList.contains('hidden')) {{
+                        container.classList.remove('hidden');
+                        if (!html5QrCode) html5QrCode = new Html5Qrcode("reader");
+                        html5QrCode.start({{ facingMode: "environment" }}, {{ fps: 10, qrbox: {{ width: 250, height: 250 }} }}, (decodedText) => {{
+                            let urlParams = new URLSearchParams(decodedText.split('?')[1]);
+                            let scannedId = urlParams.get('id');
+                            if (scannedId) {{
+                                document.getElementById('selectPresenceAdherent').value = scannedId;
+                                toggleScanner();
+                            }}
+                        }});
+                    }} else {{
+                        container.classList.add('hidden');
+                        if (html5QrCode && html5QrCode.isScanning) html5QrCode.stop();
+                    }}
+                }}
+                function openModal(id) {{ document.getElementById('modal-' + id).classList.remove('hidden'); }}
+                function closeModal(id) {{ document.getElementById('modal-' + id).classList.add('hidden'); }}
+                function filtrerAdherents() {{
+                    let input = document.getElementById('searchAdherent').value.toLowerCase();
+                    let rows = document.getElementsByClassName('adherent-row');
+                    for (let r of rows) r.style.display = r.getAttribute('data-search').includes(input) ? "" : "none";
+                }}
+                function filtrerSelectPresence() {{
+                    let input = document.getElementById('searchSelectPresence').value.toLowerCase();
+                    let opts = document.getElementById('selectPresenceAdherent').getElementsByTagName('option');
+                    for (let i = 1; i < opts.length; i++) opts[i].style.display = opts[i].getAttribute('data-text').includes(input) ? "" : "none";
+                }}
+            </script>
         </head>
         <body class="bg-slate-50 text-slate-800 font-sans antialiased min-h-screen py-6 px-4">
             <div class="max-w-4xl mx-auto">
-                <header class="text-center mb-8">
-                    <h1 class="text-2xl font-black text-slate-900">Tinka ka Mein Haaldi fotti</h1>
-                    <a href="/" class="text-xs text-red-600 font-bold">Déconnexion</a>
-                </header>
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6 flex justify-between items-center">
+                    <div class="flex items-center gap-4">
+                        {user_photo}
+                        <div>
+                            <h2 class="text-lg font-bold">{user['prenom']} {user['nom']}</h2>
+                            <p class="text-xs text-slate-500">Rôle : <span class="font-bold text-blue-600 uppercase">{user['role']}</span></p>
+                        </div>
+                    </div>
+                    <a href="/" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-xs font-bold">Déconnexion</a>
+                </div>
                 {finance_sections_html}
+                {member_sections_html}
             </div>
         </body>
         </html>
