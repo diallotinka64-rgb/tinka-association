@@ -14,7 +14,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="28.0")
+app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="29.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -449,7 +449,6 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
         except Exception:
             all_presences = []
 
-        # Récupération du solde initial de la caisse
         param_res = supabase.table("parametres").select("solde_initial").eq("id", 1).execute()
         solde_initial = param_res.data[0]['solde_initial'] if param_res.data else 0.0
 
@@ -477,22 +476,6 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                 else:
                     nb_retard = len(mois_manquants)
                     statut_ajour = f"<span class='text-red-600 font-bold'>Retard ({nb_retard} mois)</span>"
-                    
-                    msg_whatsapp = urllib.parse.quote(f"Bonjour {a['prenom']} {a['nom']}, le bureau de Tinka ka Mein Haaldi fotti vous rappelle que vous avez {nb_retard} mois de cotisation en retard ({', '.join(mois_manquants)}). Merci de régulariser.")
-                    tel = a.get('telephone', '').replace('+', '').replace(' ', '')
-
-                    relances_whatsapp_html += f"""
-                    <div class="relance-item bg-red-50 p-4 rounded-xl border border-red-100 mb-3 text-sm" data-search="{a['prenom'].lower()} {a['nom'].lower()} {a['secteur'].lower()} {tel}">
-                        <div class="flex justify-between items-center">
-                            <div><b>{a['prenom']} {a['nom']}</b> <span class='text-xs text-slate-500'>({a['secteur']} - +{tel})</span></div>
-                            <span class="text-red-700 font-bold text-xs bg-red-100 px-2.5 py-1 rounded-full">{nb_retard} mois manquant(s)</span>
-                        </div>
-                        <div class="text-xs text-slate-600 mt-1">Mois en retard : {', '.join(mois_manquants)}</div>
-                        <div class="mt-2">
-                            <a href="https://wa.me/{tel}?text={msg_whatsapp}" target="_blank" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold inline-flex items-center gap-1.5 shadow-sm">💚 Relancer par WhatsApp</a>
-                        </div>
-                    </div>
-                    """
 
                 suivi_retards_html += f"<li class='py-1.5 border-b border-slate-100 flex justify-between items-center text-sm'><span><b>{a['prenom']} {a['nom']}</b> <span class='text-xs text-slate-400'>({a['secteur']})</span></span> {statut_ajour}</li>"
 
@@ -503,8 +486,6 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                 montant_c_fmt = formater_montant(c['montant'])
                 search_cotis = f"{adh.get('prenom','')} {adh.get('nom','')} {adh.get('secteur','')} {c['periode']} {c['mode_paiement']}".lower()
                 cotis_table_html += f"<tr class='cotis-row hover:bg-slate-50' data-search='{search_cotis}'><td class='p-2.5 font-medium'>{adh.get('prenom','')} {adh.get('nom','')}</td><td class='p-2.5 text-slate-600'>{adh.get('secteur','')}</td><td class='p-2.5 font-bold text-emerald-600'>{montant_c_fmt} CFA</td><td class='p-2.5 text-slate-600'>{c['periode']}</td><td class='p-2.5 text-slate-600'>{c['mode_paiement']}</td><td class='p-2.5'>{btn_recu}</td></tr>"
-
-            options_filtre_mois = "".join([f"<option value='{m}' {'selected' if filtre_periode==m else ''}>{m}</option>" for m in mois_12])
 
             categories_dict = {}
             for d in all_decaissements:
@@ -632,6 +613,7 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                 <ul class="max-h-60 overflow-y-auto pr-2">{suivi_retards_html}</ul>
             </div>
 
+            <!-- MODULE POINTAGE & SCANNER QR CODE -->
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 border-b pb-2 gap-2">
                     <h2 class="text-lg font-bold text-teal-700">📋 Pointage & Scanner QR Code</h2>
@@ -676,6 +658,7 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                 </form>
             </div>
 
+            <!-- ANNUAIRE DES ADHÉRENTS -->
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
                 <div class="flex flex-col sm:flex-row justify-between items-center mb-4 border-b pb-2 gap-2">
                     <div>
@@ -695,6 +678,7 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
 
             {modals_html}
 
+            <!-- ENREGISTREMENT COTISATION / REGULARISATION -->
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
                 <h2 class="text-lg font-bold text-purple-600 mb-4 border-b pb-2">➕ Enregistrer une Cotisation ou Régularisation</h2>
                 <form action="/cotisations-form" method="POST" class="space-y-4">
@@ -721,12 +705,73 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                     <button type="submit" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2.5 rounded-lg text-sm">Valider l'enregistrement</button>
                 </form>
             </div>
+
+            <!-- MODULE PLANIFICATION ÉVÉNEMENTS -->
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
+                <h2 class="text-lg font-bold text-blue-700 mb-4 border-b pb-2">📅 Planifier un Événement ou une Réunion</h2>
+                <form action="/evenements-form" method="POST" class="space-y-3">
+                    <input type="hidden" name="user_id" value="{user['id']}">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Titre de l'événement</label><input type="text" name="titre" required class="w-full p-2 text-sm border rounded-lg"></div>
+                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Date</label><input type="date" name="date_evenement" required class="w-full p-2 text-sm border rounded-lg"></div>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Lieu</label><input type="text" name="lieu" required class="w-full p-2 text-sm border rounded-lg"></div>
+                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Type</label><input type="text" name="type_evenement" placeholder="ex: Réunion, Assemblée..." required class="w-full p-2 text-sm border rounded-lg"></div>
+                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Statut</label><select name="statut" class="w-full p-2 text-sm border rounded-lg"><option value="Prevu">Prévu</option><option value="En cours">En cours</option><option value="Termine">Terminé</option></select></div>
+                    </div>
+                    <div><label class="block text-xs font-bold text-slate-600 mb-1">Description</label><textarea name="description" rows="2" class="w-full p-2 text-sm border rounded-lg"></textarea></div>
+                    <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded-lg text-sm shadow">Enregistrer l'événement</button>
+                </form>
+            </div>
+
+            <!-- MODULE GESTION DES PROJETS -->
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
+                <h2 class="text-lg font-bold text-indigo-700 mb-4 border-b pb-2">🚀 Ajouter un Projet (Daara & Communauté)</h2>
+                <form action="/projets-form" method="POST" enctype="multipart/form-data" class="space-y-3">
+                    <input type="hidden" name="user_id" value="{user['id']}">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Titre du projet</label><input type="text" name="titre" required class="w-full p-2 text-sm border rounded-lg"></div>
+                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Coût estimé (CFA)</label><input type="number" name="cout" required class="w-full p-2 text-sm border rounded-lg"></div>
+                    </div>
+                    <div><label class="block text-xs font-bold text-slate-600 mb-1">Description</label><textarea name="description" rows="2" required class="w-full p-2 text-sm border rounded-lg"></textarea></div>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Objectifs</label><input type="text" name="objectifs" required class="w-full p-2 text-sm border rounded-lg"></div>
+                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Chronologie / Planning</label><input type="text" name="chronologie" placeholder="ex: Octobre - Décembre" required class="w-full p-2 text-sm border rounded-lg"></div>
+                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Statut</label><select name="statut" class="w-full p-2 text-sm border rounded-lg"><option value="En cours">En cours</option><option value="Planifie">Planifié</option><option value="Termine">Terminé</option></select></div>
+                    </div>
+                    <div><label class="block text-xs font-bold text-slate-600 mb-1">Photo / Illustration</label><input type="file" name="file_projet" accept="image/*" class="w-full text-xs text-slate-500 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:text-indigo-700"></div>
+                    <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 rounded-lg text-sm shadow">Enregistrer le projet</button>
+                </form>
+            </div>
+
+            <!-- MODULE DÉCAISSEMENTS & SORTIES DE CAISSE -->
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
+                <h2 class="text-lg font-bold text-red-600 mb-4 border-b pb-2">💸 Enregistrer un Décaissement (Sortie d'argent)</h2>
+                <form action="/decaissements-form" method="POST" class="space-y-3">
+                    <input type="hidden" name="user_id" value="{user['id']}">
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Motif de la dépense</label><input type="text" name="motif" required class="w-full p-2 text-sm border rounded-lg"></div>
+                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Montant (CFA)</label><input type="number" name="montant" required class="w-full p-2 text-sm border rounded-lg"></div>
+                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Bénéficiaire</label><input type="text" name="beneficiaire" required class="w-full p-2 text-sm border rounded-lg"></div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">Catégorie</label>
+                        <select name="categorie" required class="w-full p-2 text-sm border rounded-lg bg-white">
+                            <option value="Daara">Daara (École coranique)</option>
+                            <option value="Social">Social / Aide humanitaire</option>
+                            <option value="Logistique">Logistique & Fonctionnement</option>
+                            <option value="Divers">Divers</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2 rounded-lg text-sm shadow">Enregistrer la sortie</button>
+                </form>
+            </div>
             """
 
         member_sections_html = ""
         if not is_tresorier:
             cotis_perso = [c for c in all_cotisations if c['adherent_id'] == user['id']]
-            mois_payes_list = [c['periode'] for c in cotis_perso]
             mois_payes_html = "".join([f"<li class='py-2 border-b border-slate-100 text-sm flex justify-between items-center'><span>Mois de <b>{c['periode']}</b> : <span class='text-emerald-600 font-bold'>Payé ({formater_montant(c['montant'])} CFA)</span></span> <a href='/cotisation/recu-pdf/{c['id']}' target='_blank' class='bg-blue-600 text-white px-2.5 py-1 rounded text-xs font-semibold'>Reçu PDF</a></li>" for c in cotis_perso])
             
             member_sections_html = f"""
@@ -741,6 +786,15 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
                 <h2 class="text-lg font-bold text-emerald-700 mb-4 border-b pb-2">📋 Mon Suivi de Cotisations</h2>
                 <ul class="max-h-60 overflow-y-auto">{mois_payes_html or '<li class="text-sm text-slate-400">Aucun versement.</li>'}</ul>
+            </div>
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
+                <h2 class="text-lg font-bold text-amber-600 mb-4 border-b pb-2">🤝 Demander une Aide Communautaire</h2>
+                <form action="/aides-form" method="POST" class="space-y-3">
+                    <input type="hidden" name="user_id" value="{user['id']}">
+                    <div><label class="block text-xs font-bold text-slate-600 mb-1">Motif de la demande</label><input type="text" name="motif" required class="w-full p-2 text-sm border rounded-lg"></div>
+                    <div><label class="block text-xs font-bold text-slate-600 mb-1">Montant demandé (CFA)</label><input type="number" name="montant_demande" required class="w-full p-2 text-sm border rounded-lg"></div>
+                    <button type="submit" class="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-2 rounded-lg text-sm shadow">Envoyer la demande</button>
+                </form>
             </div>
             """
 
