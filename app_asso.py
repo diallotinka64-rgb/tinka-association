@@ -14,7 +14,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="33.0")
+app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="34.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -105,60 +105,74 @@ async def creer_adherent_form(
     except Exception as e:
         return HTMLResponse(content=f"<script>alert('Erreur : Ce numéro de téléphone existe déjà.'); window.location.href='/';</script>")
 
-@app.post("/modifier-photo")
-async def modifier_photo(user_id: int = Form(...), file_photo: UploadFile = File(...)):
-    photo_path = ""
+@app.api_route("/modifier-photo", methods=["GET", "POST"])
+async def modifier_photo(user_id: Optional[int] = Form(None), file_photo: Optional[UploadFile] = File(None)):
+    if not user_id:
+        return RedirectResponse(url="/", status_code=303)
+    
     if file_photo and file_photo.filename:
         file_location = os.path.join(UPLOAD_DIR, file_photo.filename)
         with open(file_location, "wb+") as file_object:
             file_object.write(await file_photo.read())
         photo_path = f"/static/uploads/{file_photo.filename}"
+        supabase.table("adherents").update({"photo_profil": photo_path}).eq("id", user_id).execute()
 
-    supabase.table("adherents").update({"photo_profil": photo_path}).eq("id", user_id).execute()
     return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
 
-@app.post("/admin/valider-adherent")
-def valider_adherent(user_id: int = Form(...), adherent_id: int = Form(...)):
-    supabase.table("adherents").update({"statut": "actif"}).eq("id", adherent_id).execute()
-    return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
+@app.api_route("/admin/valider-adherent", methods=["GET", "POST"])
+def valider_adherent(user_id: Optional[int] = Form(None), adherent_id: Optional[int] = Form(None)):
+    if user_id and adherent_id:
+        supabase.table("adherents").update({"statut": "actif"}).eq("id", adherent_id).execute()
+        return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url="/", status_code=303)
 
-@app.post("/admin/changer-role")
-def changer_role(user_id: int = Form(...), adherent_id: int = Form(...), nouveau_role: str = Form(...)):
-    supabase.table("adherents").update({"role": nouveau_role}).eq("id", adherent_id).execute()
-    return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
+@app.api_route("/admin/changer-role", methods=["GET", "POST"])
+def changer_role(user_id: Optional[int] = Form(None), adherent_id: Optional[int] = Form(None), nouveau_role: Optional[str] = Form(None)):
+    if user_id and adherent_id and nouveau_role:
+        supabase.table("adherents").update({"role": nouveau_role}).eq("id", adherent_id).execute()
+        return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url="/", status_code=303)
 
-@app.post("/admin/modifier-adherent")
+@app.api_route("/admin/modifier-adherent", methods=["GET", "POST"])
 def modifier_adherent(
-    user_id: int = Form(...), adherent_id: int = Form(...),
-    nom: str = Form(...), prenom: str = Form(...),
-    telephone: str = Form(...), secteur: str = Form(...)
+    user_id: Optional[int] = Form(None), adherent_id: Optional[int] = Form(None),
+    nom: Optional[str] = Form(None), prenom: Optional[str] = Form(None),
+    telephone: Optional[str] = Form(None), secteur: Optional[str] = Form(None)
 ):
+    if not user_id or not adherent_id:
+        return RedirectResponse(url="/", status_code=303)
     try:
         supabase.table("adherents").update({
             "nom": nom, "prenom": prenom, "telephone": telephone, "secteur": secteur
         }).eq("id", adherent_id).execute()
         return HTMLResponse(content=f"<script>alert('Informations mises à jour avec succès !'); window.location.href='/dashboard?id={user_id}';</script>")
     except Exception as e:
-        return HTMLResponse(content=f"<script>alert('Erreur (Ce numéro appartient peut-être déjà à un autre membre) : {str(e)}'); window.location.href='/dashboard?id={user_id}';</script>")
+        return HTMLResponse(content=f"<script>alert('Erreur : {str(e)}'); window.location.href='/dashboard?id={user_id}';</script>")
 
-@app.post("/admin/reset-password")
-def reset_password(user_id: int = Form(...), adherent_id: int = Form(...), nouveau_mdp: str = Form(...)):
+@app.api_route("/admin/reset-password", methods=["GET", "POST"])
+def reset_password(user_id: Optional[int] = Form(None), adherent_id: Optional[int] = Form(None), nouveau_mdp: Optional[str] = Form(None)):
+    if not user_id or not adherent_id or not nouveau_mdp:
+        return RedirectResponse(url="/", status_code=303)
     mdp_securise = hacher_mdp(nouveau_mdp)
     supabase.table("adherents").update({"mot_de_passe": mdp_securise}).eq("id", adherent_id).execute()
     return HTMLResponse(content=f"<script>alert('Mot de passe réinitialisé et sécurisé avec succès !'); window.location.href='/dashboard?id={user_id}';</script>")
 
-@app.post("/admin/maj-solde-initial")
-def maj_solde_initial(user_id: int = Form(...), solde_initial: float = Form(...)):
+@app.api_route("/admin/maj-solde-initial", methods=["GET", "POST"])
+def maj_solde_initial(user_id: Optional[int] = Form(None), solde_initial: Optional[float] = Form(None)):
+    if not user_id or solde_initial is None:
+        return RedirectResponse(url="/", status_code=303)
     try:
         supabase.table("parametres").update({"solde_initial": solde_initial}).eq("id", 1).execute()
         return HTMLResponse(content=f"<script>alert('Solde initial de caisse mis à jour avec succès !'); window.location.href='/dashboard?id={user_id}';</script>")
     except Exception as e:
         return HTMLResponse(content=f"<script>alert('Erreur : {str(e)}'); window.location.href='/dashboard?id={user_id}';</script>")
 
-@app.post("/admin/valider-aide")
-def valider_aide(user_id: int = Form(...), aide_id: int = Form(...), statut_validation: str = Form(...)):
-    supabase.table("aides").update({"statut_validation": statut_validation}).eq("id", aide_id).execute()
-    return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
+@app.api_route("/admin/valider-aide", methods=["GET", "POST"])
+def valider_aide(user_id: Optional[int] = Form(None), aide_id: Optional[int] = Form(None), statut_validation: Optional[str] = Form(None)):
+    if user_id and aide_id and statut_validation:
+        supabase.table("aides").update({"statut_validation": statut_validation}).eq("id", aide_id).execute()
+        return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url="/", status_code=303)
 
 @app.post("/cotisations-form/")
 @app.post("/cotisations-form")
@@ -823,11 +837,9 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
             evenements_membre_html = "".join([f"<div class='p-3 bg-slate-50 rounded-xl border border-slate-100 mb-2'><h4 class='font-bold text-sm text-blue-900'>{ev['titre']}</h4><p class='text-xs text-slate-600'>{ev['description']}</p><div class='text-[10px] text-slate-400 mt-1'>📅 Date : {ev['date_evenement'][:10]} | 📍 Lieu : {ev['lieu']}</div></div>" for ev in all_evenements])
             projets_membre_html = "".join([f"<div class='p-3 bg-slate-50 rounded-xl border border-slate-100 mb-2'><h4 class='font-bold text-sm text-indigo-900'>{pr['titre']}</h4><p class='text-xs text-slate-600'>{pr['description']}</p><div class='flex justify-between items-center text-[10px] text-slate-500 mt-1 font-semibold'><span>Objectif : {formater_montant(pr['cout'])} CFA</span><span class='text-emerald-700'>{pr['statut']}</span></div></div>" for pr in all_projets])
 
-            # Affichage de la photo sur la carte d'adhérent
             photo_carte_tag = f"<img src='{user['photo_profil']}' class='w-20 h-20 rounded-xl object-cover border-2 border-white/20 shadow' onerror='this.style.display=\"none\"'>" if user['photo_profil'] else "<div class='w-20 h-20 rounded-xl bg-white/10 flex items-center justify-center font-bold text-white text-xl border-2 border-white/20'>" + user['prenom'][0] + "</div>"
 
             member_sections_html = f"""
-            <!-- CARTE D'ADHÉRENT AVEC PHOTO -->
             <div class="bg-gradient-to-br from-slate-900 to-emerald-950 text-white p-6 rounded-3xl shadow-xl mb-6">
                 <div class="flex justify-between items-start gap-4">
                     <div>
