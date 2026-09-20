@@ -14,7 +14,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="29.0")
+app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="32.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -155,6 +155,11 @@ def maj_solde_initial(user_id: int = Form(...), solde_initial: float = Form(...)
     except Exception as e:
         return HTMLResponse(content=f"<script>alert('Erreur : {str(e)}'); window.location.href='/dashboard?id={user_id}';</script>")
 
+@app.post("/admin/valider-aide")
+def valider_aide(user_id: int = Form(...), aide_id: int = Form(...), statut_validation: str = Form(...)):
+    supabase.table("aides").update({"statut_validation": statut_validation}).eq("id", aide_id).execute()
+    return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
+
 @app.post("/cotisations-form/")
 @app.post("/cotisations-form")
 def ajouter_cotisation(user_id: int = Form(...), adherent_id: int = Form(...), montant: float = Form(...), periode: str = Form(...), mode_paiement: str = Form(...)):
@@ -167,7 +172,7 @@ def ajouter_cotisation(user_id: int = Form(...), adherent_id: int = Form(...), m
 @app.post("/aides-form")
 def demander_aide(user_id: int = Form(...), motif: str = Form(...), montant_demande: float = Form(...)):
     supabase.table("aides").insert({
-        "adherent_id": user_id, "motif": motif, "montant_demande": montant_demande
+        "adherent_id": user_id, "motif": motif, "montant_demande": montant_demande, "statut_validation": "en_attente"
     }).execute()
     return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
 
@@ -466,7 +471,6 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
             options_adherents = "".join([f"<option value='{a['id']}' data-text='{a['prenom'].lower()} {a['nom'].lower()} {a['secteur'].lower()} {a['telephone']}'>{a['prenom']} {a['nom']} — Secteur: {a['secteur']} (Tél: {a['telephone']})</option>" for a in all_actifs if a['role'] != 'admin'])
             
             suivi_retards_html = ""
-            relances_whatsapp_html = ""
             for a in all_actifs:
                 cotis_membre = [c['periode'] for c in all_cotisations if c['adherent_id'] == a['id']]
                 mois_manquants = [m for m in mois_12 if m not in cotis_membre]
@@ -479,13 +483,37 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
 
                 suivi_retards_html += f"<li class='py-1.5 border-b border-slate-100 flex justify-between items-center text-sm'><span><b>{a['prenom']} {a['nom']}</b> <span class='text-xs text-slate-400'>({a['secteur']})</span></span> {statut_ajour}</li>"
 
-            cotis_table_html = ""
-            for c in cotis_affichees:
-                adh = c.get('adherents', {}) or {}
-                btn_recu = f"<a href='/cotisation/recu-pdf/{c['id']}' target='_blank' class='bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1 rounded text-xs font-semibold'>Reçu PDF</a>"
-                montant_c_fmt = formater_montant(c['montant'])
-                search_cotis = f"{adh.get('prenom','')} {adh.get('nom','')} {adh.get('secteur','')} {c['periode']} {c['mode_paiement']}".lower()
-                cotis_table_html += f"<tr class='cotis-row hover:bg-slate-50' data-search='{search_cotis}'><td class='p-2.5 font-medium'>{adh.get('prenom','')} {adh.get('nom','')}</td><td class='p-2.5 text-slate-600'>{adh.get('secteur','')}</td><td class='p-2.5 font-bold text-emerald-600'>{montant_c_fmt} CFA</td><td class='p-2.5 text-slate-600'>{c['periode']}</td><td class='p-2.5 text-slate-600'>{c['mode_paiement']}</td><td class='p-2.5'>{btn_recu}</td></tr>"
+            # Liste des demandes d'aide à valider
+            aides_admin_html = ""
+            for ai in all_aides:
+                adh_aide = ai.get('adherents', {}) or {}
+                st_aide = ai.get('statut_validation', 'en_attente')
+                
+                actions_aide = ""
+                if st_aide == 'en_attente':
+                    actions_aide = f"""
+                    <form action="/admin/valider-aide" method="POST" class="inline-block">
+                        <input type="hidden" name="user_id" value="{user['id']}"><input type="hidden" name="aide_id" value="{ai['id']}"><input type="hidden" name="statut_validation" value="approuve">
+                        <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 rounded text-xs font-bold mr-1">Approuver</button>
+                    </form>
+                    <form action="/admin/valider-aide" method="POST" class="inline-block">
+                        <input type="hidden" name="user_id" value="{user['id']}"><input type="hidden" name="aide_id" value="{ai['id']}"><input type="hidden" name="statut_validation" value="refuse">
+                        <button type="submit" class="bg-red-600 hover:bg-red-700 text-white px-2.5 py-1 rounded text-xs font-bold">Refuser</button>
+                    </form>
+                    """
+                else:
+                    badge_col = "bg-emerald-100 text-emerald-800" if st_aide == 'approuve' else "bg-red-100 text-red-800"
+                    actions_aide = f"<span class='text-xs font-bold px-2.5 py-1 rounded-full {badge_col}'>{st_aide.upper()}</span>"
+
+                aides_admin_html += f"""
+                <li class="py-2.5 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center text-sm gap-2">
+                    <div>
+                        <b>{adh_aide.get('prenom','')} {adh_aide.get('nom','')}</b> — <span class="text-xs text-slate-600">Motif : {ai['motif']}</span>
+                        <div class="text-xs font-bold text-amber-700">Montant demandé : {formater_montant(ai['montant_demande'])} CFA</div>
+                    </div>
+                    <div>{actions_aide}</div>
+                </li>
+                """
 
             categories_dict = {}
             for d in all_decaissements:
@@ -587,6 +615,19 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
             solde_fmt = formater_montant(solde)
 
             finance_sections_html = f"""
+            <!-- MODIFICATION DE LA PHOTO DE PROFIL POUR L'ADMIN / TRESORIER -->
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
+                <h2 class="text-lg font-bold text-slate-700 mb-4 border-b pb-2">🖼️ Modifier ma Photo de Profil</h2>
+                <form action="/modifier-photo" method="POST" enctype="multipart/form-data" class="space-y-3">
+                    <input type="hidden" name="user_id" value="{user['id']}">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">Choisir une nouvelle photo</label>
+                        <input type="file" name="file_photo" accept="image/*" required class="w-full text-xs text-slate-500 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-emerald-50 file:text-emerald-700">
+                    </div>
+                    <button type="submit" class="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-2 rounded-lg text-sm shadow">Mettre à jour la photo</button>
+                </form>
+            </div>
+
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
                 <h2 class="text-lg font-bold text-emerald-700 mb-4 border-b pb-2">💼 Gestion du Solde Initial & Trésorerie</h2>
                 
@@ -611,6 +652,12 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
 
                 <h3 class="text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">État des cotisations</h3>
                 <ul class="max-h-60 overflow-y-auto pr-2">{suivi_retards_html}</ul>
+            </div>
+
+            <!-- ESPACE VALIDATION DES DEMANDES D'AIDE -->
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
+                <h2 class="text-lg font-bold text-amber-700 mb-4 border-b pb-2">🤝 Demandes d'Aide Communautaire (Validation)</h2>
+                <ul class="max-h-60 overflow-y-auto">{aides_admin_html or '<li class="text-sm text-slate-400">Aucune demande d\'aide en attente.</li>'}</ul>
             </div>
 
             <!-- MODULE POINTAGE & SCANNER QR CODE -->
@@ -774,6 +821,9 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
             cotis_perso = [c for c in all_cotisations if c['adherent_id'] == user['id']]
             mois_payes_html = "".join([f"<li class='py-2 border-b border-slate-100 text-sm flex justify-between items-center'><span>Mois de <b>{c['periode']}</b> : <span class='text-emerald-600 font-bold'>Payé ({formater_montant(c['montant'])} CFA)</span></span> <a href='/cotisation/recu-pdf/{c['id']}' target='_blank' class='bg-blue-600 text-white px-2.5 py-1 rounded text-xs font-semibold'>Reçu PDF</a></li>" for c in cotis_perso])
             
+            evenements_membre_html = "".join([f"<div class='p-3 bg-slate-50 rounded-xl border border-slate-100 mb-2'><h4 class='font-bold text-sm text-blue-900'>{ev['titre']}</h4><p class='text-xs text-slate-600'>{ev['description']}</p><div class='text-[10px] text-slate-400 mt-1'>📅 Date : {ev['date_evenement'][:10]} | 📍 Lieu : {ev['lieu']}</div></div>" for ev in all_evenements])
+            projets_membre_html = "".join([f"<div class='p-3 bg-slate-50 rounded-xl border border-slate-100 mb-2'><h4 class='font-bold text-sm text-indigo-900'>{pr['titre']}</h4><p class='text-xs text-slate-600'>{pr['description']}</p><div class='flex justify-between items-center text-[10px] text-slate-500 mt-1 font-semibold'><span>Objectif : {formater_montant(pr['cout'])} CFA</span><span class='text-emerald-700'>{pr['statut']}</span></div></div>" for pr in all_projets])
+
             member_sections_html = f"""
             <div class="bg-gradient-to-br from-slate-900 to-emerald-950 text-white p-6 rounded-3xl shadow-xl mb-6">
                 <h2 class="text-xl font-black">Carte d'Adhérent — {user['prenom']} {user['nom']}</h2>
@@ -783,10 +833,35 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                     <span class="block text-[9px] font-bold text-slate-700 mt-1 uppercase">ID: {user['id']}</span>
                 </div>
             </div>
+
+            <!-- MODIFICATION DE LA PHOTO DE PROFIL -->
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
+                <h2 class="text-lg font-bold text-slate-700 mb-4 border-b pb-2">🖼️ Modifier ma Photo de Profil</h2>
+                <form action="/modifier-photo" method="POST" enctype="multipart/form-data" class="space-y-3">
+                    <input type="hidden" name="user_id" value="{user['id']}">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">Choisir une nouvelle photo</label>
+                        <input type="file" name="file_photo" accept="image/*" required class="w-full text-xs text-slate-500 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-emerald-50 file:text-emerald-700">
+                    </div>
+                    <button type="submit" class="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-2 rounded-lg text-sm shadow">Mettre à jour la photo</button>
+                </form>
+            </div>
+
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
                 <h2 class="text-lg font-bold text-emerald-700 mb-4 border-b pb-2">📋 Mon Suivi de Cotisations</h2>
                 <ul class="max-h-60 overflow-y-auto">{mois_payes_html or '<li class="text-sm text-slate-400">Aucun versement.</li>'}</ul>
             </div>
+
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
+                <h2 class="text-lg font-bold text-blue-700 mb-4 border-b pb-2">📅 Événements & Réunions à venir</h2>
+                <div class="max-h-60 overflow-y-auto">{evenements_membre_html or '<p class="text-xs text-slate-400">Aucune réunion ou événement planifié pour le moment.</p>'}</div>
+            </div>
+
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
+                <h2 class="text-lg font-bold text-indigo-700 mb-4 border-b pb-2">🚀 Projets du Daara & de l'Association</h2>
+                <div class="max-h-60 overflow-y-auto">{projets_membre_html or '<p class="text-xs text-slate-400">Aucun projet enregistré pour le moment.</p>'}</div>
+            </div>
+
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
                 <h2 class="text-lg font-bold text-amber-600 mb-4 border-b pb-2">🤝 Demander une Aide Communautaire</h2>
                 <form action="/aides-form" method="POST" class="space-y-3">
