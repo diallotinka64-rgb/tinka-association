@@ -14,7 +14,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="32.0")
+app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="33.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -483,7 +483,6 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
 
                 suivi_retards_html += f"<li class='py-1.5 border-b border-slate-100 flex justify-between items-center text-sm'><span><b>{a['prenom']} {a['nom']}</b> <span class='text-xs text-slate-400'>({a['secteur']})</span></span> {statut_ajour}</li>"
 
-            # Liste des demandes d'aide à valider
             aides_admin_html = ""
             for ai in all_aides:
                 adh_aide = ai.get('adherents', {}) or {}
@@ -824,12 +823,22 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
             evenements_membre_html = "".join([f"<div class='p-3 bg-slate-50 rounded-xl border border-slate-100 mb-2'><h4 class='font-bold text-sm text-blue-900'>{ev['titre']}</h4><p class='text-xs text-slate-600'>{ev['description']}</p><div class='text-[10px] text-slate-400 mt-1'>📅 Date : {ev['date_evenement'][:10]} | 📍 Lieu : {ev['lieu']}</div></div>" for ev in all_evenements])
             projets_membre_html = "".join([f"<div class='p-3 bg-slate-50 rounded-xl border border-slate-100 mb-2'><h4 class='font-bold text-sm text-indigo-900'>{pr['titre']}</h4><p class='text-xs text-slate-600'>{pr['description']}</p><div class='flex justify-between items-center text-[10px] text-slate-500 mt-1 font-semibold'><span>Objectif : {formater_montant(pr['cout'])} CFA</span><span class='text-emerald-700'>{pr['statut']}</span></div></div>" for pr in all_projets])
 
+            # Affichage de la photo sur la carte d'adhérent
+            photo_carte_tag = f"<img src='{user['photo_profil']}' class='w-20 h-20 rounded-xl object-cover border-2 border-white/20 shadow' onerror='this.style.display=\"none\"'>" if user['photo_profil'] else "<div class='w-20 h-20 rounded-xl bg-white/10 flex items-center justify-center font-bold text-white text-xl border-2 border-white/20'>" + user['prenom'][0] + "</div>"
+
             member_sections_html = f"""
+            <!-- CARTE D'ADHÉRENT AVEC PHOTO -->
             <div class="bg-gradient-to-br from-slate-900 to-emerald-950 text-white p-6 rounded-3xl shadow-xl mb-6">
-                <h2 class="text-xl font-black">Carte d'Adhérent — {user['prenom']} {user['nom']}</h2>
-                <p class="text-xs text-slate-300 mt-1">Secteur : {user['secteur']} | Tél : {user['telephone']}</p>
+                <div class="flex justify-between items-start gap-4">
+                    <div>
+                        <span class="bg-emerald-500/20 text-emerald-400 text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider border border-emerald-500/30">Carte Officielle</span>
+                        <h2 class="text-xl font-black mt-2">{user['prenom']} {user['nom']}</h2>
+                        <p class="text-xs text-slate-300 mt-0.5">Secteur : {user['secteur']} | Tél : {user['telephone']}</p>
+                    </div>
+                    <div>{photo_carte_tag}</div>
+                </div>
                 <div class="bg-white p-3 rounded-xl inline-block mt-4 text-center">
-                    <img src="data:image/png;base64,{qr_perso_b64}" alt="QR Code" class="w-28 h-28 rounded">
+                    <img src="data:image/png;base64,{qr_perso_b64}" alt="QR Code" class="w-24 h-24 rounded">
                     <span class="block text-[9px] font-bold text-slate-700 mt-1 uppercase">ID: {user['id']}</span>
                 </div>
             </div>
