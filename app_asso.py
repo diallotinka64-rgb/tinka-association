@@ -14,7 +14,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="34.0")
+app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="37.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -37,6 +37,16 @@ def formater_montant(montant: float) -> str:
         return f"{int(montant):,}".replace(",", " ")
     except Exception:
         return str(montant)
+
+def formater_date(date_str: str) -> str:
+    if not date_str:
+        return ""
+    try:
+        nettoi = date_str[:10]
+        annee, mois, jour = nettoi.split("-")
+        return f"{jour}-{mois}-{annee}"
+    except Exception:
+        return date_str
 
 def hacher_mdp(mdp: str) -> str:
     return bcrypt.hashpw(mdp.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
@@ -87,23 +97,27 @@ async def creer_adherent_form(
     adresse: str = Form(...), secteur: str = Form(...),
     mot_de_passe: str = Form(...), file_photo: UploadFile = File(None)
 ):
-    photo_path = ""
-    if file_photo and file_photo.filename:
-        file_location = os.path.join(UPLOAD_DIR, file_photo.filename)
-        with open(file_location, "wb+") as file_object:
-            file_object.write(await file_photo.read())
-        photo_path = f"/static/uploads/{file_photo.filename}"
-
-    mdp_securise = hacher_mdp(mot_de_passe)
-
     try:
+        existing_user = supabase.table("adherents").select("id").eq("telephone", telephone).execute()
+        if existing_user.data:
+            return HTMLResponse(content="<script>alert('Erreur : Ce numéro de téléphone est déjà associé à un compte existant. Veuillez vous connecter.'); window.location.href='/';</script>")
+
+        photo_path = ""
+        if file_photo and file_photo.filename:
+            file_location = os.path.join(UPLOAD_DIR, file_photo.filename)
+            with open(file_location, "wb+") as file_object:
+                file_object.write(await file_photo.read())
+            photo_path = f"/static/uploads/{file_photo.filename}"
+
+        mdp_securise = hacher_mdp(mot_de_passe)
+
         supabase.table("adherents").insert({
             "nom": nom, "prenom": prenom, "email": f"{telephone}@tinka.local", "telephone": telephone,
             "adresse": adresse, "secteur": secteur, "photo_profil": photo_path, "mot_de_passe": mdp_securise
         }).execute()
         return HTMLResponse(content="<script>alert('Compte créé avec succès ! En attente de validation.'); window.location.href='/';</script>")
     except Exception as e:
-        return HTMLResponse(content=f"<script>alert('Erreur : Ce numéro de téléphone existe déjà.'); window.location.href='/';</script>")
+        return HTMLResponse(content=f"<script>alert('Erreur lors de l\\'inscription : {str(e)}'); window.location.href='/';</script>")
 
 @app.api_route("/modifier-photo", methods=["GET", "POST"])
 async def modifier_photo(user_id: Optional[int] = Form(None), file_photo: Optional[UploadFile] = File(None)):
@@ -302,6 +316,7 @@ def telecharger_recu_pdf(cotisation_id: int):
     c = res.data[0]
     adh = c.get('adherents', {}) or {}
     montant_fmt = formater_montant(c['montant'])
+    date_paiement_fr = formater_date(c.get('date_paiement', ''))
 
     buffer = io.BytesIO()
     p = canvas.Canvas(buffer, pagesize=letter)
@@ -320,7 +335,7 @@ def telecharger_recu_pdf(cotisation_id: int):
     p.setFillColorRGB(0, 0, 0)
     p.drawString(50, height - 120, f"Reçu N° : TK-{c['id']:04d}")
     p.setFont("Helvetica", 11)
-    p.drawString(50, height - 145, f"Date de Paiement : {c['date_paiement'][:10]}")
+    p.drawString(50, height - 145, f"Date de Paiement : {date_paiement_fr}")
     p.drawString(50, height - 170, f"Membre : {adh.get('prenom','')} {adh.get('nom','')}")
     p.drawString(50, height - 195, f"Secteur : {adh.get('secteur','')}")
     p.drawString(50, height - 220, f"Téléphone : {adh.get('telephone','')}")
@@ -447,8 +462,6 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
         
         cotis_res = supabase.table("cotisations").select("*, adherents(nom, prenom, secteur, telephone)").execute()
         all_cotisations = cotis_res.data
-
-        cotis_affichees = [c for c in all_cotisations if c['periode'] == filtre_periode] if filtre_periode else all_cotisations
 
         aides_res = supabase.table("aides").select("*, adherents(nom, prenom, secteur)").execute()
         all_aides = aides_res.data
@@ -611,18 +624,19 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
             for p in all_presences:
                 adh = p.get('adherents', {}) or {}
                 st_pres = p.get('statut_presence', 'Present')
+                date_reunion_fr = formater_date(p.get('date_reunion', ''))
                 badge_color = "bg-emerald-100 text-emerald-800" if st_pres == 'Present' else ("bg-amber-100 text-amber-800" if "excuse" in st_pres else "bg-red-100 text-red-800")
                 presences_table_rows += f"""
                 <tr class="presence-row hover:bg-slate-50 border-b border-slate-100 text-sm" data-search="{adh.get('prenom','').lower()} {adh.get('nom','').lower()} {p.get('evenement_titre','').lower()}">
                     <td class="p-2.5 font-bold text-slate-900">{adh.get('prenom','')} {adh.get('nom','')}</td>
                     <td class="p-2.5 text-slate-600">{p.get('evenement_titre','')}</td>
-                    <td class="p-2.5 text-slate-500 text-xs">{p.get('date_reunion','')}</td>
+                    <td class="p-2.5 text-slate-500 text-xs">{date_reunion_fr}</td>
                     <td class="p-2.5"><span class="text-xs px-2.5 py-1 rounded-full font-bold {badge_color}">{st_pres}</span></td>
                 </tr>
                 """
 
             options_presence_adherents = "".join([f"<option value='{a['id']}' data-text='{a['prenom'].lower()} {a['nom'].lower()} {a['secteur'].lower()}'>{a['prenom']} {a['nom']} — {a['secteur']}</option>" for a in all_actifs])
-            options_evenements_titres = "".join([f"<option value='{ev['titre']}'>{ev['titre']} ({ev['date_evenement'][:10]})</option>" for ev in all_evenements]) or "<option value='Réunion Générale'>Réunion Générale</option>"
+            options_evenements_titres = "".join([f"<option value='{ev['titre']}'>{ev['titre']} ({formater_date(ev['date_evenement'])})</option>" for ev in all_evenements]) or "<option value='Réunion Générale'>Réunion Générale</option>"
 
             solde_initial_fmt = formater_montant(solde_initial)
             solde_fmt = formater_montant(solde)
@@ -834,7 +848,7 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
             cotis_perso = [c for c in all_cotisations if c['adherent_id'] == user['id']]
             mois_payes_html = "".join([f"<li class='py-2 border-b border-slate-100 text-sm flex justify-between items-center'><span>Mois de <b>{c['periode']}</b> : <span class='text-emerald-600 font-bold'>Payé ({formater_montant(c['montant'])} CFA)</span></span> <a href='/cotisation/recu-pdf/{c['id']}' target='_blank' class='bg-blue-600 text-white px-2.5 py-1 rounded text-xs font-semibold'>Reçu PDF</a></li>" for c in cotis_perso])
             
-            evenements_membre_html = "".join([f"<div class='p-3 bg-slate-50 rounded-xl border border-slate-100 mb-2'><h4 class='font-bold text-sm text-blue-900'>{ev['titre']}</h4><p class='text-xs text-slate-600'>{ev['description']}</p><div class='text-[10px] text-slate-400 mt-1'>📅 Date : {ev['date_evenement'][:10]} | 📍 Lieu : {ev['lieu']}</div></div>" for ev in all_evenements])
+            evenements_membre_html = "".join([f"<div class='p-3 bg-slate-50 rounded-xl border border-slate-100 mb-2'><h4 class='font-bold text-sm text-blue-900'>{ev['titre']}</h4><p class='text-xs text-slate-600'>{ev['description']}</p><div class='text-[10px] text-slate-400 mt-1'>📅 Date : {formater_date(ev['date_evenement'])} | 📍 Lieu : {ev['lieu']}</div></div>" for ev in all_evenements])
             projets_membre_html = "".join([f"<div class='p-3 bg-slate-50 rounded-xl border border-slate-100 mb-2'><h4 class='font-bold text-sm text-indigo-900'>{pr['titre']}</h4><p class='text-xs text-slate-600'>{pr['description']}</p><div class='flex justify-between items-center text-[10px] text-slate-500 mt-1 font-semibold'><span>Objectif : {formater_montant(pr['cout'])} CFA</span><span class='text-emerald-700'>{pr['statut']}</span></div></div>" for pr in all_projets])
 
             photo_carte_tag = f"<img src='{user['photo_profil']}' class='w-20 h-20 rounded-xl object-cover border-2 border-white/20 shadow' onerror='this.style.display=\"none\"'>" if user['photo_profil'] else "<div class='w-20 h-20 rounded-xl bg-white/10 flex items-center justify-center font-bold text-white text-xl border-2 border-white/20'>" + user['prenom'][0] + "</div>"
