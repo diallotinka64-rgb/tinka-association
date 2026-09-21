@@ -14,7 +14,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="39.0")
+app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="40.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -196,6 +196,27 @@ def ajouter_cotisation(user_id: int = Form(...), adherent_id: int = Form(...), m
     }).execute()
     return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
 
+@app.post("/paiement-mobile-form/")
+@app.post("/paiement-mobile-form")
+def paiement_mobile(
+    user_id: int = Form(...),
+    montant: float = Form(...),
+    periode: str = Form(...),
+    operateur: str = Form(...), # 'Wave' ou 'Orange Money'
+    telephone_paiement: str = Form(...)
+):
+    try:
+        mode = f"mobile_{operateur.lower()}"
+        supabase.table("cotisations").insert({
+            "adherent_id": user_id,
+            "montant": montant,
+            "periode": periode,
+            "mode_paiement": mode
+        }).execute()
+        return HTMLResponse(content=f"<script>alert('Demande de paiement {operateur} initiée avec succès pour le numéro {telephone_paiement} !'); window.location.href='/dashboard?id={user_id}';</script>")
+    except Exception as e:
+        return HTMLResponse(content=f"<script>alert('Erreur lors du paiement mobile : {str(e)}'); window.location.href='/dashboard?id={user_id}';</script>")
+
 @app.post("/aides-form/")
 @app.post("/aides-form")
 def demander_aide(user_id: int = Form(...), motif: str = Form(...), montant_demande: float = Form(...)):
@@ -223,7 +244,7 @@ async def ajouter_projet(
     if file_projet and file_projet.filename:
         file_location = os.path.join(UPLOAD_DIR, file_projet.filename)
         with open(file_location, "wb+") as file_object:
-            file_object.write(await file_photo.read() if hasattr(file_projet, 'read') else b"")
+            file_object.write(await file_projet.read())
         photo_path = f"/static/uploads/{file_projet.filename}"
 
     supabase.table("projets").insert({
@@ -535,7 +556,6 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
         url_profil_personnel = f"https://tinka-association.onrender.com/dashboard?id={user['id']}"
         qr_perso_b64 = generer_qrcode_base64(url_profil_personnel)
 
-        # GENERATION DU HTML DES PROJETS AVEC IMAGES/PHOTOS
         projets_cards_html = ""
         for pr in all_projets:
             photo_html = f"<img src='{pr['photo_projet']}' class='w-full h-44 object-cover rounded-xl mb-3 shadow-sm border border-slate-100' onerror='this.style.display=\"none\"'>" if pr.get('photo_projet') else ""
@@ -864,7 +884,7 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                 </form>
             </div>
 
-            <!-- MODULE GESTION DES PROJETS ADMIN (AJOUT + LISTE DES PROJETS AVEC PHOTOS) -->
+            <!-- MODULE GESTION DES PROJETS ADMIN -->
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
                 <h2 class="text-lg font-bold text-indigo-700 mb-4 border-b pb-2">🚀 Ajouter un Projet (Daara & Communauté)</h2>
                 <form action="/projets-form" method="POST" enctype="multipart/form-data" class="space-y-3 mb-6">
@@ -916,7 +936,7 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
         member_sections_html = ""
         if not is_tresorier:
             cotis_perso = [c for c in all_cotisations if c['adherent_id'] == user['id']]
-            mois_payes_html = "".join([f"<li class='py-2 border-b border-slate-100 text-sm flex justify-between items-center'><span>Mois de <b>{c['periode']}</b> : <span class='text-emerald-600 font-bold'>Payé ({formater_montant(c['montant'])} CFA)</span></span> <a href='/cotisation/recu-pdf/{c['id']}' target='_blank' class='bg-blue-600 text-white px-2.5 py-1 rounded text-xs font-semibold'>Reçu PDF</a></li>" for c in cotis_perso])
+            mois_payes_html = "".join([f"<li class='py-2 border-b border-slate-100 text-sm flex justify-between items-center'><span>Mois de <b>{c['periode']}</b> ({c['mode_paiement']}) : <span class='text-emerald-600 font-bold'>Payé ({formater_montant(c['montant'])} CFA)</span></span> <a href='/cotisation/recu-pdf/{c['id']}' target='_blank' class='bg-blue-600 text-white px-2.5 py-1 rounded text-xs font-semibold'>Reçu PDF</a></li>" for c in cotis_perso])
             
             evenements_membre_html = "".join([f"<div class='p-3 bg-slate-50 rounded-xl border border-slate-100 mb-2'><h4 class='font-bold text-sm text-blue-900'>{ev['titre']}</h4><p class='text-xs text-slate-600'>{ev['description']}</p><div class='text-[10px] text-slate-400 mt-1'>📅 Date : {formater_date(ev['date_evenement'])} | 📍 Lieu : {ev['lieu']}</div></div>" for ev in all_evenements])
 
@@ -951,6 +971,32 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                 </form>
             </div>
 
+            <!-- MODULE PAIEMENT MOBILE (WAVE / ORANGE MONEY) POUR LES MEMBRES -->
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
+                <h2 class="text-lg font-bold text-blue-700 mb-4 border-b pb-2">📱 Effectuer un Paiement Mobile (Wave / Orange Money)</h2>
+                <form action="/paiement-mobile-form" method="POST" class="space-y-3">
+                    <input type="hidden" name="user_id" value="{user['id']}">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-600 mb-1">Opérateur</label>
+                            <select name="operateur" required class="w-full p-2 text-sm border rounded-lg bg-white">
+                                <option value="Wave">🌊 Wave</option>
+                                <option value="OrangeMoney">🟠 Orange Money</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-600 mb-1">Numéro de téléphone payeur</label>
+                            <input type="text" name="telephone_paiement" value="{user['telephone']}" required class="w-full p-2 text-sm border rounded-lg">
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Montant (CFA)</label><input type="number" name="montant" required class="w-full p-2 text-sm border rounded-lg"></div>
+                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Période concernée</label><input type="text" name="periode" placeholder="ex: 2026-09" required class="w-full p-2 text-sm border rounded-lg"></div>
+                    </div>
+                    <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-lg text-sm shadow">Payer par Mobile Money</button>
+                </form>
+            </div>
+
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
                 <h2 class="text-lg font-bold text-emerald-700 mb-4 border-b pb-2">📋 Mon Suivi de Cotisations</h2>
                 <ul class="max-h-60 overflow-y-auto">{mois_payes_html or '<li class="text-sm text-slate-400">Aucun versement.</li>'}</ul>
@@ -961,7 +1007,6 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                 <div class="max-h-60 overflow-y-auto">{evenements_membre_html or '<p class="text-xs text-slate-400">Aucune réunion ou événement planifié pour le moment.</p>'}</div>
             </div>
 
-            <!-- GALERIE DES PROJETS AVEC PHOTOS POUR LES MEMBRES -->
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
                 <h2 class="text-lg font-bold text-indigo-700 mb-4 border-b pb-2">🚀 Projets du Daara & de l'Association</h2>
                 <div class="max-h-96 overflow-y-auto">
