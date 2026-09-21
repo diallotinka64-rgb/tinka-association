@@ -14,7 +14,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="44.0")
+app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="45.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -191,9 +191,8 @@ def valider_aide(user_id: Optional[int] = Form(None), aide_id: Optional[int] = F
 @app.api_route("/admin/valider-paiement-mobile", methods=["GET", "POST"])
 def valider_paiement_mobile(user_id: Optional[int] = Form(None), paiement_id: Optional[int] = Form(None)):
     if user_id and paiement_id:
-        # Met à jour le statut du paiement mobile à 'valide'
         supabase.table("cotisations").update({"statut_paiement": "valide"}).eq("id", paiement_id).execute()
-        return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
+        return HTMLResponse(content=f"<script>alert('Paiement mobile vérifié et validé avec succès ! Ajouté à la caisse.'); window.location.href='/dashboard?id={user_id}';</script>")
     return RedirectResponse(url="/", status_code=303)
 
 @app.post("/cotisations-form/")
@@ -224,7 +223,7 @@ def paiement_mobile(
             "mode_paiement": mode,
             "statut_paiement": "en_attente"
         }).execute()
-        return HTMLResponse(content=f"<script>alert('Paiement {operateur} déclaré avec succès ! En attente de validation par le trésorier.'); window.location.href='/dashboard?id={user_id}';</script>")
+        return HTMLResponse(content=f"<script>alert('Paiement {operateur} déclaré avec succès ! Il est en attente de vérification par le trésorier.'); window.location.href='/dashboard?id={user_id}';</script>")
     except Exception as e:
         return HTMLResponse(content=f"<script>alert('Erreur lors du paiement mobile : {str(e)}'); window.location.href='/dashboard?id={user_id}';</script>")
 
@@ -331,7 +330,7 @@ def export_adherents_pdf():
 
 @app.get("/cotisations/export-pdf")
 def export_cotisations_pdf(periode: Optional[str] = Query(None)):
-    query = supabase.table("cotisations").select("*, adherents(nom, prenom, secteur)")
+    query = supabase.table("cotisations").select("*, adherents(nom, prenom, secteur)").eq("statut_paiement", "valide")
     if periode:
         query = query.eq("periode", periode)
         titre_rapport = f"Tinka ka Mein Haaldi fotti - Rapport des Cotisations ({periode})"
@@ -388,6 +387,9 @@ def telecharger_recu_pdf(cotisation_id: int):
         return HTMLResponse("Reçu introuvable", status_code=404)
     
     c = res.data[0]
+    if c.get('statut_paiement', 'valide') != 'valide':
+        return HTMLResponse("<script>alert('Ce paiement est encore en attente de vérification. Le reçu ne peut pas être émis.'); window.history.back();</script>", status_code=403)
+
     adh = c.get('adherents', {}) or {}
     montant_fmt = formater_montant(c['montant'])
     date_paiement_fr = formater_date(c.get('date_paiement', ''))
@@ -558,6 +560,7 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
         param_res = supabase.table("parametres").select("solde_initial").eq("id", 1).execute()
         solde_initial = param_res.data[0]['solde_initial'] if param_res.data else 0.0
 
+        # CAISSE : Seules les cotisations VALIDÉES et les régularisations (si payées) comptent
         cotisations_caisse = sum([c['montant'] for c in all_cotisations if "regularisation" not in str(c.get('mode_paiement', '')) and c.get('statut_paiement', 'valide') == 'valide'])
         total_aides_approuvees = sum([ai['montant_demande'] for ai in all_aides if ai['statut_validation'] == 'approuve'])
         total_dec = sum([d['montant'] for d in all_decaissements])
@@ -617,12 +620,12 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                     <form action="/admin/valider-paiement-mobile" method="POST" class="inline">
                         <input type="hidden" name="user_id" value="{user['id']}">
                         <input type="hidden" name="paiement_id" value="{pm['id']}">
-                        <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 rounded text-xs font-bold shadow">✅ Valider & Enregistrer</button>
+                        <button type="submit" class="bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow flex items-center gap-1">⏳ Vérifier & Valider</button>
                     </form>
                     """
                 else:
                     action_cell = f"""
-                    <span class="text-xs font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full mr-2">Validé</span>
+                    <span class="text-xs font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full mr-2">Validé & Reçu</span>
                     <a href="/cotisation/recu-pdf/{pm['id']}" target="_blank" class="bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1 rounded text-xs font-bold">📄 Reçu PDF</a>
                     """
 
@@ -796,7 +799,7 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
 
                 <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4 text-center">
                     <div class="bg-slate-50 p-3 rounded-xl border border-slate-200"><span class="block text-xs text-slate-500 font-bold uppercase">Solde Initial</span><span class="text-lg font-black text-slate-800">{solde_initial_fmt} CFA</span></div>
-                    <div class="bg-emerald-50 p-3 rounded-xl border border-emerald-100"><span class="block text-xs text-emerald-600 font-bold uppercase">Cotisations Standard</span><span class="text-lg font-black text-emerald-800">{formater_montant(cotisations_caisse)} CFA</span></div>
+                    <div class="bg-emerald-50 p-3 rounded-xl border border-emerald-100"><span class="block text-xs text-emerald-600 font-bold uppercase">Cotisations Validées</span><span class="text-lg font-black text-emerald-800">{formater_montant(cotisations_caisse)} CFA</span></div>
                     <div class="bg-red-50 p-3 rounded-xl border border-red-100"><span class="block text-xs text-red-600 font-bold uppercase">Dépenses & Aides</span><span class="text-lg font-black text-red-800">{formater_montant(total_aides_approuvees + total_dec)} CFA</span></div>
                 </div>
                 <div class="text-center bg-slate-900 text-white py-3 rounded-xl font-bold text-lg mb-6">Solde Réel en Caisse : <span class="text-emerald-400">{solde_fmt} CFA</span></div>
@@ -808,14 +811,14 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                 <ul class="max-h-60 overflow-y-auto pr-2">{suivi_retards_html}</ul>
             </div>
 
-            <!-- TABLEAU DE SUIVI DES PAIEMENTS MOBILE MONEY (AVEC BOUTON DE VALIDATION DIRECT) -->
+            <!-- TABLEAU DE SUIVI DES PAIEMENTS MOBILE MONEY (AVEC VÉRIFICATION MANUELLE) -->
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
-                <h2 class="text-lg font-bold text-blue-700 mb-2 border-b pb-2">📱 Suivi & Validation des Paiements Mobile Money</h2>
-                <p class="text-xs text-slate-500 mb-4">Validez les paiements reçus sur vos numéros pour les intégrer à la caisse et générer les reçus PDF.</p>
+                <h2 class="text-lg font-bold text-blue-700 mb-2 border-b pb-2">📱 Vérification & Validation des Paiements Mobile Money</h2>
+                <p class="text-xs text-slate-500 mb-4">Ces paiements sont déclarés par les membres. Vérifiez l'arrivée effective des fonds sur votre compte Wave ou Orange Money avant de valider.</p>
                 <div class="overflow-x-auto max-h-60 overflow-y-auto border border-slate-200 rounded-xl">
                     <table class="w-full text-left border-collapse bg-white">
                         <thead class="bg-slate-100 text-slate-600 text-xs uppercase sticky top-0 z-10">
-                            <tr><th class="p-2.5">Adhérent</th><th class="p-2.5">Détails & Référence</th><th class="p-2.5">Montant</th><th class="p-2.5">Période</th><th class="p-2.5">Date</th><th class="p-2.5 text-right">Actions / Validation</th></tr>
+                            <tr><th class="p-2.5">Adhérent</th><th class="p-2.5">Détails & Référence</th><th class="p-2.5">Montant</th><th class="p-2.5">Période</th><th class="p-2.5">Date</th><th class="p-2.5 text-right">Statut / Action</th></tr>
                         </thead>
                         <tbody>{paiements_mobiles_rows or '<tr><td colspan="6" class="p-4 text-center text-sm text-slate-400">Aucun paiement mobile initié pour le moment.</td></tr>'}</tbody>
                     </table>
@@ -995,7 +998,23 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
         member_sections_html = ""
         if not is_tresorier:
             cotis_perso = [c for c in all_cotisations if c['adherent_id'] == user['id']]
-            mois_payes_html = "".join([f"<li class='py-2 border-b border-slate-100 text-sm flex justify-between items-center'><span>Mois de <b>{c['periode']}</b> ({c['mode_paiement']}) : <span class='text-emerald-600 font-bold'>Payé ({formater_montant(c['montant'])} CFA)</span></span> <a href='/cotisation/recu-pdf/{c['id']}' target='_blank' class='bg-blue-600 text-white px-2.5 py-1 rounded text-xs font-semibold'>Reçu PDF</a></li>" for c in cotis_perso])
+            
+            mois_payes_html = ""
+            for c in cotis_perso:
+                st_p = c.get('statut_paiement', 'valide')
+                if st_p == 'valide':
+                    badge_etat = "<span class='text-emerald-600 font-bold'>Payé & Validé</span>"
+                    action_recu = f"<a href='/cotisation/recu-pdf/{c['id']}' target='_blank' class='bg-blue-600 text-white px-2.5 py-1 rounded text-xs font-semibold'>Reçu PDF</a>"
+                else:
+                    badge_etat = "<span class='text-amber-600 font-bold'>En attente de vérification</span>"
+                    action_recu = "<span class='text-xs text-slate-400 italic'>En cours</span>"
+
+                mois_payes_html += f"""
+                <li class='py-2 border-b border-slate-100 text-sm flex justify-between items-center'>
+                    <span>Mois de <b>{c['periode']}</b> ({c['mode_paiement']}) : {badge_etat} ({formater_montant(c['montant'])} CFA)</span>
+                    {action_recu}
+                </li>
+                """
             
             evenements_membre_html = "".join([f"<div class='p-3 bg-slate-50 rounded-xl border border-slate-100 mb-2'><h4 class='font-bold text-sm text-blue-900'>{ev['titre']}</h4><p class='text-xs text-slate-600'>{ev['description']}</p><div class='text-[10px] text-slate-400 mt-1'>📅 Date : {formater_date(ev['date_evenement'])} | 📍 Lieu : {ev['lieu']}</div></div>" for ev in all_evenements])
 
