@@ -14,7 +14,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="38.0")
+app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="39.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -223,7 +223,7 @@ async def ajouter_projet(
     if file_projet and file_projet.filename:
         file_location = os.path.join(UPLOAD_DIR, file_projet.filename)
         with open(file_location, "wb+") as file_object:
-            file_object.write(await file_projet.read())
+            file_object.write(await file_photo.read() if hasattr(file_projet, 'read') else b"")
         photo_path = f"/static/uploads/{file_projet.filename}"
 
     supabase.table("projets").insert({
@@ -535,6 +535,26 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
         url_profil_personnel = f"https://tinka-association.onrender.com/dashboard?id={user['id']}"
         qr_perso_b64 = generer_qrcode_base64(url_profil_personnel)
 
+        # GENERATION DU HTML DES PROJETS AVEC IMAGES/PHOTOS
+        projets_cards_html = ""
+        for pr in all_projets:
+            photo_html = f"<img src='{pr['photo_projet']}' class='w-full h-44 object-cover rounded-xl mb-3 shadow-sm border border-slate-100' onerror='this.style.display=\"none\"'>" if pr.get('photo_projet') else ""
+            projets_cards_html += f"""
+            <div class="bg-slate-50 p-4 rounded-2xl border border-slate-200 mb-4 shadow-sm">
+                {photo_html}
+                <div class="flex justify-between items-start gap-2 mb-2">
+                    <h4 class="font-bold text-base text-indigo-950">{pr['titre']}</h4>
+                    <span class="text-xs font-bold px-2.5 py-1 rounded-full bg-indigo-100 text-indigo-800 uppercase">{pr['statut']}</span>
+                </div>
+                <p class="text-xs text-slate-600 mb-3 leading-relaxed">{pr['description']}</p>
+                <div class="text-xs text-slate-600 space-y-1.5 bg-white p-3 rounded-xl border border-slate-100">
+                    <div><b>🎯 Objectifs :</b> {pr.get('objectifs', 'Non spécifié')}</div>
+                    <div><b>📅 Planning :</b> {pr.get('chronologie', 'Non spécifié')}</div>
+                    <div class="font-bold text-emerald-700">💰 Budget estimé : {formater_montant(pr['cout'])} CFA</div>
+                </div>
+            </div>
+            """
+
         finance_sections_html = ""
         if is_tresorier:
             options_adherents = "".join([f"<option value='{a['id']}' data-text='{a['prenom'].lower()} {a['nom'].lower()} {a['secteur'].lower()} {a['telephone']}'>{a['prenom']} {a['nom']} — Secteur: {a['secteur']} (Tél: {a['telephone']})</option>" for a in all_actifs if a['role'] != 'admin'])
@@ -844,10 +864,10 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                 </form>
             </div>
 
-            <!-- MODULE GESTION DES PROJETS -->
+            <!-- MODULE GESTION DES PROJETS ADMIN (AJOUT + LISTE DES PROJETS AVEC PHOTOS) -->
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
                 <h2 class="text-lg font-bold text-indigo-700 mb-4 border-b pb-2">🚀 Ajouter un Projet (Daara & Communauté)</h2>
-                <form action="/projets-form" method="POST" enctype="multipart/form-data" class="space-y-3">
+                <form action="/projets-form" method="POST" enctype="multipart/form-data" class="space-y-3 mb-6">
                     <input type="hidden" name="user_id" value="{user['id']}">
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div><label class="block text-xs font-bold text-slate-600 mb-1">Titre du projet</label><input type="text" name="titre" required class="w-full p-2 text-sm border rounded-lg"></div>
@@ -859,9 +879,14 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                         <div><label class="block text-xs font-bold text-slate-600 mb-1">Chronologie / Planning</label><input type="text" name="chronologie" placeholder="ex: Octobre - Décembre" required class="w-full p-2 text-sm border rounded-lg"></div>
                         <div><label class="block text-xs font-bold text-slate-600 mb-1">Statut</label><select name="statut" class="w-full p-2 text-sm border rounded-lg"><option value="En cours">En cours</option><option value="Planifie">Planifié</option><option value="Termine">Terminé</option></select></div>
                     </div>
-                    <div><label class="block text-xs font-bold text-slate-600 mb-1">Photo / Illustration</label><input type="file" name="file_projet" accept="image/*" class="w-full text-xs text-slate-500 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:text-indigo-700"></div>
+                    <div><label class="block text-xs font-bold text-slate-600 mb-1">Photo / Illustration du projet</label><input type="file" name="file_projet" accept="image/*" class="w-full text-xs text-slate-500 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:text-indigo-700"></div>
                     <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 rounded-lg text-sm shadow">Enregistrer le projet</button>
                 </form>
+
+                <h3 class="text-sm font-bold text-slate-700 mb-3 border-t pt-4 uppercase">Projets enregistrés</h3>
+                <div class="max-h-96 overflow-y-auto">
+                    {projets_cards_html or '<p class="text-xs text-slate-400">Aucun projet enregistré pour le moment.</p>'}
+                </div>
             </div>
 
             <!-- MODULE DÉCAISSEMENTS & SORTIES DE CAISSE -->
@@ -894,7 +919,6 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
             mois_payes_html = "".join([f"<li class='py-2 border-b border-slate-100 text-sm flex justify-between items-center'><span>Mois de <b>{c['periode']}</b> : <span class='text-emerald-600 font-bold'>Payé ({formater_montant(c['montant'])} CFA)</span></span> <a href='/cotisation/recu-pdf/{c['id']}' target='_blank' class='bg-blue-600 text-white px-2.5 py-1 rounded text-xs font-semibold'>Reçu PDF</a></li>" for c in cotis_perso])
             
             evenements_membre_html = "".join([f"<div class='p-3 bg-slate-50 rounded-xl border border-slate-100 mb-2'><h4 class='font-bold text-sm text-blue-900'>{ev['titre']}</h4><p class='text-xs text-slate-600'>{ev['description']}</p><div class='text-[10px] text-slate-400 mt-1'>📅 Date : {formater_date(ev['date_evenement'])} | 📍 Lieu : {ev['lieu']}</div></div>" for ev in all_evenements])
-            projets_membre_html = "".join([f"<div class='p-3 bg-slate-50 rounded-xl border border-slate-100 mb-2'><h4 class='font-bold text-sm text-indigo-900'>{pr['titre']}</h4><p class='text-xs text-slate-600'>{pr['description']}</p><div class='flex justify-between items-center text-[10px] text-slate-500 mt-1 font-semibold'><span>Objectif : {formater_montant(pr['cout'])} CFA</span><span class='text-emerald-700'>{pr['statut']}</span></div></div>" for pr in all_projets])
 
             photo_carte_tag = f"<img src='{user['photo_profil']}' class='w-20 h-20 rounded-xl object-cover border-2 border-white/20 shadow' onerror='this.style.display=\"none\"'>" if user['photo_profil'] else "<div class='w-20 h-20 rounded-xl bg-white/10 flex items-center justify-center font-bold text-white text-xl border-2 border-white/20'>" + user['prenom'][0] + "</div>"
 
@@ -937,9 +961,12 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                 <div class="max-h-60 overflow-y-auto">{evenements_membre_html or '<p class="text-xs text-slate-400">Aucune réunion ou événement planifié pour le moment.</p>'}</div>
             </div>
 
+            <!-- GALERIE DES PROJETS AVEC PHOTOS POUR LES MEMBRES -->
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
                 <h2 class="text-lg font-bold text-indigo-700 mb-4 border-b pb-2">🚀 Projets du Daara & de l'Association</h2>
-                <div class="max-h-60 overflow-y-auto">{projets_membre_html or '<p class="text-xs text-slate-400">Aucun projet enregistré pour le moment.</p>'}</div>
+                <div class="max-h-96 overflow-y-auto">
+                    {projets_cards_html or '<p class="text-xs text-slate-400">Aucun projet enregistré pour le moment.</p>'}
+                </div>
             </div>
 
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
