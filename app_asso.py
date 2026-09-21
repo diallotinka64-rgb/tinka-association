@@ -5,7 +5,7 @@ from fastapi.staticfiles import StaticFiles
 import io
 import os
 import datetime
-from typing import Optional
+from typing import Optional, List
 import bcrypt
 import qrcode
 import base64
@@ -14,7 +14,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="47.0")
+app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="48.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -277,21 +277,22 @@ def ajouter_evenement(
 
 @app.post("/panorama-form/")
 @app.post("/panorama-form")
-async def ajouter_panorama(user_id: int = Form(...), legende: str = Form(...), file_photo: UploadFile = File(...)):
+async def ajouter_panorama(user_id: int = Form(...), legende: str = Form(...), files_photos: List[UploadFile] = File(...)):
     try:
-        photo_path = ""
-        if file_photo and file_photo.filename:
-            file_location = os.path.join(UPLOAD_DIR, file_photo.filename)
-            with open(file_location, "wb+") as file_object:
-                file_object.write(await file_photo.read())
-            photo_path = f"/static/uploads/{file_photo.filename}"
+        for file_photo in files_photos:
+            if file_photo and file_photo.filename:
+                file_location = os.path.join(UPLOAD_DIR, file_photo.filename)
+                with open(file_location, "wb+") as file_object:
+                    file_object.write(await file_photo.read())
+                photo_path = f"/static/uploads/{file_photo.filename}"
 
-        supabase.table("panorama_village").insert({
-            "legende": legende, "photo_url": photo_path, "auteur_id": user_id
-        }).execute()
-        return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
-    except Exception:
-        return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
+                supabase.table("panorama_village").insert({
+                    "legende": legende, "photo_url": photo_path, "auteur_id": user_id
+                }).execute()
+    except Exception as e:
+        print(f"Erreur panorama : {e}")
+    
+    return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
 
 @app.post("/presences-form/")
 @app.post("/presences-form")
@@ -455,7 +456,6 @@ def afficher_portail():
     url_site = "https://tinka-association.onrender.com"
     qr_b64 = generer_qrcode_base64(url_site)
 
-    # Récupération panorama pour affichage public sur la page d'accueil
     try:
         panorama_res = supabase.table("panorama_village").select("*, adherents(nom, prenom)").order("id", desc=True).execute()
         all_panorama = panorama_res.data
@@ -838,7 +838,6 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
             solde_initial_fmt = formater_montant(solde_initial)
             solde_fmt = formater_montant(solde)
 
-            # BARRE D'ONGLETS AUX COULEURS HARMONIEUSES ET TYPOGRAPHIE SOIGNÉE
             finance_sections_html = f"""
             <div class="flex flex-wrap gap-2 mb-6 border-b border-slate-200 pb-3">
                 <button onclick="switchTab('tab-tresorerie')" id="btn-tab-tresorerie" class="tab-btn px-4 py-2 text-xs font-bold rounded-xl bg-slate-900 text-white shadow-md transition">💼 Trésorerie & Caisse</button>
@@ -877,7 +876,6 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                     <ul class="max-h-60 overflow-y-auto pr-2">{suivi_retards_html}</ul>
                 </div>
 
-                <!-- TABLEAU DE SUIVI DES PAIEMENTS MOBILE MONEY (VALIDATION MANUELLE) -->
                 <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                     <h2 class="text-base font-bold text-slate-900 mb-2 border-b pb-2">📱 Vérification & Validation des Paiements Mobile Money</h2>
                     <p class="text-xs text-slate-500 mb-4">Vérifiez l'arrivée effective des fonds sur votre compte Wave ou Orange Money avant de valider pour alimenter la caisse.</p>
@@ -891,7 +889,6 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                     </div>
                 </div>
 
-                <!-- ENREGISTREMENT COTISATION / REGULARISATION -->
                 <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                     <h2 class="text-base font-bold text-slate-900 mb-4 border-b pb-2">➕ Enregistrer une Cotisation ou Régularisation</h2>
                     <form action="/cotisations-form" method="POST" class="space-y-4">
@@ -919,7 +916,6 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                     </form>
                 </div>
 
-                <!-- MODULE DÉCAISSEMENTS & SORTIES DE CAISSE -->
                 <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                     <h2 class="text-base font-bold text-slate-900 mb-4 border-b pb-2">💸 Enregistrer un Décaissement (Sortie d'argent)</h2>
                     <form action="/decaissements-form" method="POST" class="space-y-3">
@@ -968,7 +964,6 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
 
             <!-- ONGLET 3 : PLANIFICATION & POINTAGE -->
             <div id="tab-pointage" class="tab-content hidden space-y-6">
-                <!-- MODULE PLANIFICATION ÉVÉNEMENTS (INTÉGRÉ DANS L'ONGLET) -->
                 <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                     <h2 class="text-base font-bold text-slate-900 mb-4 border-b pb-2">📅 Planifier un Événement ou une Réunion</h2>
                     <form action="/evenements-form" method="POST" class="space-y-3">
@@ -987,7 +982,6 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                     </form>
                 </div>
 
-                <!-- MODULE POINTAGE & SCANNER QR CODE -->
                 <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 border-b pb-2 gap-2">
                         <h2 class="text-base font-bold text-slate-900">📋 Pointage & Scanner QR Code</h2>
@@ -1035,13 +1029,11 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
 
             <!-- ONGLET 4 : PROJETS & AIDES -->
             <div id="tab-projets" class="tab-content hidden space-y-6">
-                <!-- ESPACE VALIDATION DES DEMANDES D'AIDE -->
                 <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                     <h2 class="text-base font-bold text-slate-900 mb-4 border-b pb-2">🤝 Demandes d'Aide Communautaire (Validation)</h2>
                     <ul class="max-h-60 overflow-y-auto">{aides_admin_html or '<li class="text-sm text-slate-400">Aucune demande d\'aide en attente.</li>'}</ul>
                 </div>
 
-                <!-- MODULE GESTION DES PROJETS ADMIN -->
                 <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                     <h2 class="text-base font-bold text-slate-900 mb-4 border-b pb-2">🚀 Ajouter un Projet (Daara & Communauté)</h2>
                     <form action="/projets-form" method="POST" enctype="multipart/form-data" class="space-y-3 mb-6">
@@ -1067,21 +1059,21 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                 </div>
             </div>
 
-            <!-- ONGLET 5 : PANORAMA VILLAGE -->
+            <!-- ONGLET 5 : PANORAMA VILLAGE (MULTI-UPLOAD SUPPORT) -->
             <div id="tab-panorama" class="tab-content hidden space-y-6">
                 <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                    <h2 class="text-base font-bold text-slate-900 mb-4 border-b pb-2">🌍 Partager une Photo du Village (Panorama)</h2>
+                    <h2 class="text-base font-bold text-slate-900 mb-4 border-b pb-2">🌍 Partager des Photos du Village (Panorama Multiple)</h2>
                     <form action="/panorama-form" method="POST" enctype="multipart/form-data" class="space-y-3 mb-6">
                         <input type="hidden" name="user_id" value="{user['id']}">
                         <div>
-                            <label class="block text-xs font-bold text-slate-600 mb-1">Légende ou Description du souvenir</label>
-                            <input type="text" name="legende" placeholder="ex: Vue de la grande mosquée du village..." required class="w-full p-2.5 text-sm border rounded-lg">
+                            <label class="block text-xs font-bold text-slate-600 mb-1">Légende commune ou titre des souvenirs</label>
+                            <input type="text" name="legende" placeholder="ex: Vue panoramique du village et de la mosquée..." required class="w-full p-2.5 text-sm border rounded-lg">
                         </div>
                         <div>
-                            <label class="block text-xs font-bold text-slate-600 mb-1">Photo souvenir</label>
-                            <input type="file" name="file_photo" accept="image/*" required class="w-full text-xs text-slate-500 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-emerald-50 file:text-emerald-700">
+                            <label class="block text-xs font-bold text-slate-600 mb-1">Sélectionnez une ou plusieurs photos (Maintenez Ctrl ou Cmd)</label>
+                            <input type="file" name="files_photos" accept="image/*" multiple required class="w-full text-xs text-slate-500 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-emerald-50 file:text-emerald-700">
                         </div>
-                        <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-lg text-sm shadow">Publier dans le Panorama</button>
+                        <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-lg text-sm shadow">Publier les photos</button>
                     </form>
 
                     <h3 class="text-xs font-bold text-slate-700 mb-3 border-t pt-4 uppercase">Galerie du Village</h3>
@@ -1150,7 +1142,6 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                 </div>
             </div>
 
-            <!-- MODIFICATION DE LA PHOTO DE PROFIL -->
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
                 <h2 class="text-base font-bold text-slate-900 mb-4 border-b pb-2">🖼️ Modifier ma Photo de Profil</h2>
                 <form action="/modifier-photo" method="POST" enctype="multipart/form-data" class="space-y-3">
@@ -1163,7 +1154,6 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                 </form>
             </div>
 
-            <!-- MODULE PAIEMENT MOBILE (WAVE / ORANGE MONEY) -->
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
                 <h2 class="text-base font-bold text-slate-900 mb-4 border-b pb-2">📱 Déclarer un Paiement Mobile (Wave / Orange Money)</h2>
                 <form action="/paiement-mobile-form" method="POST" class="space-y-3">
@@ -1222,18 +1212,18 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
             </div>
 
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
-                <h2 class="text-base font-bold text-slate-900 mb-4 border-b pb-2">🌍 Partager & Voir le Panorama du Village</h2>
+                <h2 class="text-base font-bold text-slate-900 mb-4 border-b pb-2">🌍 Partager & Voir le Panorama du Village (Plusieurs photos)</h2>
                 <form action="/panorama-form" method="POST" enctype="multipart/form-data" class="space-y-3 mb-6">
                     <input type="hidden" name="user_id" value="{user['id']}">
                     <div>
-                        <label class="block text-xs font-bold text-slate-600 mb-1">Légende de la photo</label>
-                        <input type="text" name="legende" placeholder="ex: Rencontre au bord du fleuve..." required class="w-full p-2.5 text-sm border rounded-lg">
+                        <label class="block text-xs font-bold text-slate-600 mb-1">Légende des photos</label>
+                        <input type="text" name="legende" placeholder="ex: Souvenirs de la fête au village..." required class="w-full p-2.5 text-sm border rounded-lg">
                     </div>
                     <div>
-                        <label class="block text-xs font-bold text-slate-600 mb-1">Photo du village</label>
-                        <input type="file" name="file_photo" accept="image/*" required class="w-full text-xs text-slate-500 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-emerald-50 file:text-emerald-700">
+                        <label class="block text-xs font-bold text-slate-600 mb-1">Sélectionnez plusieurs photos</label>
+                        <input type="file" name="files_photos" accept="image/*" multiple required class="w-full text-xs text-slate-500 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-emerald-50 file:text-emerald-700">
                     </div>
-                    <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-lg text-sm shadow">Publier le souvenir</button>
+                    <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-lg text-sm shadow">Publier les souvenirs</button>
                 </form>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {panorama_cards_html or '<p class="col-span-2 text-xs text-slate-400">Aucune photo de panorama publiée pour le moment.</p>'}
