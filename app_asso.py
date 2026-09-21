@@ -9,12 +9,11 @@ from typing import Optional, List
 import bcrypt
 import qrcode
 import base64
-import urllib.parse
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="50.0")
+app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="51.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -66,6 +65,15 @@ def generer_qrcode_base64(url: str) -> str:
     img.save(buffered, format="PNG")
     return base64.b64encode(buffered.getvalue()).decode("utf-8")
 
+async def fichier_vers_base64(file_upload: UploadFile) -> str:
+    if not file_upload or not file_upload.filename:
+        return ""
+    contents = await file_upload.read()
+    if not contents:
+        return ""
+    encoded = base64.b64encode(contents).decode("utf-8")
+    return f"data:image/jpeg;base64,{encoded}"
+
 @app.get("/login-form", include_in_schema=False)
 @app.get("/login-form/", include_in_schema=False)
 def login_get_redirect():
@@ -102,19 +110,12 @@ async def creer_adherent_form(
         if existing_user.data:
             return HTMLResponse(content="<script>alert('Erreur : Ce numéro de téléphone est déjà associé à un compte existant. Veuillez vous connecter.'); window.location.href='/';</script>")
 
-        photo_path = ""
-        if file_photo and file_photo.filename:
-            filename = f"{datetime.datetime.now().timestamp()}_{file_photo.filename}"
-            file_location = os.path.join(UPLOAD_DIR, filename)
-            with open(file_location, "wb+") as file_object:
-                file_object.write(await file_photo.read())
-            photo_path = f"/static/uploads/{filename}"
-
+        photo_b64 = await fichier_vers_base64(file_photo)
         mdp_securise = hacher_mdp(mot_de_passe)
 
         supabase.table("adherents").insert({
             "nom": nom, "prenom": prenom, "email": f"{telephone}@tinka.local", "telephone": telephone,
-            "adresse": adresse, "secteur": secteur, "photo_profil": photo_path, "mot_de_passe": mdp_securise
+            "adresse": adresse, "secteur": secteur, "photo_profil": photo_b64, "mot_de_passe": mdp_securise
         }).execute()
         return HTMLResponse(content="<script>alert('Compte créé avec succès ! En attente de validation.'); window.location.href='/';</script>")
     except Exception as e:
@@ -126,12 +127,8 @@ async def modifier_photo(user_id: Optional[int] = Form(None), file_photo: Option
         return RedirectResponse(url="/", status_code=303)
     
     if file_photo and file_photo.filename:
-        filename = f"{datetime.datetime.now().timestamp()}_{file_photo.filename}"
-        file_location = os.path.join(UPLOAD_DIR, filename)
-        with open(file_location, "wb+") as file_object:
-            file_object.write(await file_photo.read())
-        photo_path = f"/static/uploads/{filename}"
-        supabase.table("adherents").update({"photo_profil": photo_path}).eq("id", user_id).execute()
+        photo_b64 = await fichier_vers_base64(file_photo)
+        supabase.table("adherents").update({"photo_profil": photo_b64}).eq("id", user_id).execute()
 
     return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
 
@@ -252,17 +249,10 @@ async def ajouter_projet(
     objectifs: str = Form(...), cout: float = Form(...), file_projet: UploadFile = File(None), 
     chronologie: str = Form(...), statut: str = Form(...)
 ):
-    photo_path = ""
-    if file_projet and file_projet.filename:
-        filename = f"{datetime.datetime.now().timestamp()}_{file_projet.filename}"
-        file_location = os.path.join(UPLOAD_DIR, filename)
-        with open(file_location, "wb+") as file_object:
-            file_object.write(await file_projet.read())
-        photo_path = f"/static/uploads/{filename}"
-
+    photo_b64 = await fichier_vers_base64(file_projet)
     supabase.table("projets").insert({
         "titre": titre, "description": description, "objectifs": objectifs,
-        "cout": cout, "photo_projet": photo_path, "chronologie": chronologie, "statut": statut
+        "cout": cout, "photo_projet": photo_b64, "chronologie": chronologie, "statut": statut
     }).execute()
     return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
 
@@ -288,15 +278,11 @@ async def ajouter_panorama(user_id: int = Form(...), legende: str = Form(...), f
 
         for file_photo in files_photos:
             if file_photo and file_photo.filename:
-                filename = f"{datetime.datetime.now().timestamp()}_{file_photo.filename}"
-                file_location = os.path.join(UPLOAD_DIR, filename)
-                with open(file_location, "wb+") as file_object:
-                    file_object.write(await file_photo.read())
-                photo_path = f"/static/uploads/{filename}"
-
-                supabase.table("panorama_village").insert({
-                    "legende": legende, "photo_url": photo_path, "auteur_id": user_id
-                }).execute()
+                photo_b64 = await fichier_vers_base64(file_photo)
+                if photo_b64:
+                    supabase.table("panorama_village").insert({
+                        "legende": legende, "photo_url": photo_b64, "auteur_id": user_id
+                    }).execute()
 
         return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
     except Exception as e:
