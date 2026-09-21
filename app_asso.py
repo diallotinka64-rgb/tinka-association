@@ -14,7 +14,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="48.0")
+app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="49.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -279,6 +279,10 @@ def ajouter_evenement(
 @app.post("/panorama-form")
 async def ajouter_panorama(user_id: int = Form(...), legende: str = Form(...), files_photos: List[UploadFile] = File(...)):
     try:
+        user_check = supabase.table("adherents").select("role").eq("id", user_id).execute()
+        if not user_check.data or user_check.data[0]['role'] not in ['admin', 'tresorier']:
+            return HTMLResponse(content="<script>alert('Action non autorisée. Seuls les administrateurs peuvent ajouter des photos au panorama.'); window.history.back();</script>", status_code=403)
+
         for file_photo in files_photos:
             if file_photo and file_photo.filename:
                 file_location = os.path.join(UPLOAD_DIR, file_photo.filename)
@@ -289,10 +293,10 @@ async def ajouter_panorama(user_id: int = Form(...), legende: str = Form(...), f
                 supabase.table("panorama_village").insert({
                     "legende": legende, "photo_url": photo_path, "auteur_id": user_id
                 }).execute()
+
+        return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
     except Exception as e:
-        print(f"Erreur panorama : {e}")
-    
-    return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
+        return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
 
 @app.post("/presences-form/")
 @app.post("/presences-form")
@@ -465,13 +469,13 @@ def afficher_portail():
     panorama_cards_public = ""
     for pano in all_panorama:
         adh_p = pano.get('adherents', {}) or {}
-        auteur_nom = f"{adh_p.get('prenom', '')} {adh_p.get('nom', '')}" if adh_p else "Village"
+        auteur_nom = f"{adh_p.get('prenom', '')} {adh_p.get('nom', '')}" if adh_p else "Administration"
         panorama_cards_public += f"""
         <div class="bg-white rounded-2xl overflow-hidden shadow-sm border border-slate-200 flex flex-col">
             <img src="{pano['photo_url']}" class="w-full h-48 object-cover" onerror="this.style.display='none'">
             <div class="p-4 flex-1 flex flex-col justify-between">
                 <p class="text-xs font-semibold text-slate-800 mb-2">"{pano['legende']}"</p>
-                <span class="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full self-start">📸 Par {auteur_nom}</span>
+                <span class="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full self-start">📸 Publié par {auteur_nom}</span>
             </div>
         </div>
         """
@@ -555,10 +559,9 @@ def afficher_portail():
             </div>
         </div>
 
-        <!-- PANORAMA DU VILLAGE (FOOTER PUBLIC) -->
         <div class="max-w-4xl mx-auto w-full bg-slate-100 p-6 rounded-3xl border border-slate-200 mt-6">
             <h3 class="text-center text-lg font-black text-slate-800 mb-1">🌍 Souvenirs & Panorama du Village</h3>
-            <p class="text-center text-xs text-slate-500 mb-6">Découvrez les photos prises au village partagées par la communauté.</p>
+            <p class="text-center text-xs text-slate-500 mb-6">Découvrez les photos prises au village publiées par l'administration.</p>
             <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                 {panorama_cards_public or '<p class="col-span-3 text-center text-xs text-slate-400 py-4">Aucune photo de panorama publiée pour le moment.</p>'}
             </div>
@@ -645,13 +648,13 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
         panorama_cards_html = ""
         for pano in all_panorama:
             adh_p = pano.get('adherents', {}) or {}
-            auteur_nom = f"{adh_p.get('prenom', '')} {adh_p.get('nom', '')}" if adh_p else "Membre"
+            auteur_nom = f"{adh_p.get('prenom', '')} {adh_p.get('nom', '')}" if adh_p else "Administration"
             panorama_cards_html += f"""
             <div class="bg-white rounded-2xl overflow-hidden shadow-sm border border-slate-200 flex flex-col">
                 <img src="{pano['photo_url']}" class="w-full h-44 object-cover" onerror="this.style.display='none'">
                 <div class="p-3 flex-1 flex flex-col justify-between">
                     <p class="text-xs font-semibold text-slate-800 mb-2">"{pano['legende']}"</p>
-                    <span class="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full self-start">📸 Par {auteur_nom}</span>
+                    <span class="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full self-start">📸 Publié par {auteur_nom}</span>
                 </div>
             </div>
             """
@@ -844,7 +847,7 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                 <button onclick="switchTab('tab-adherents')" id="btn-tab-adherents" class="tab-btn px-4 py-2 text-xs font-bold rounded-xl bg-white text-slate-700 border border-slate-200 shadow-sm transition">👥 Annuaire & Membres</button>
                 <button onclick="switchTab('tab-pointage')" id="btn-tab-pointage" class="tab-btn px-4 py-2 text-xs font-bold rounded-xl bg-white text-slate-700 border border-slate-200 shadow-sm transition">📋 Planification & Pointage</button>
                 <button onclick="switchTab('tab-projets')" id="btn-tab-projets" class="tab-btn px-4 py-2 text-xs font-bold rounded-xl bg-white text-slate-700 border border-slate-200 shadow-sm transition">🚀 Projets & Aides</button>
-                <button onclick="switchTab('tab-panorama')" id="btn-tab-panorama" class="tab-btn px-4 py-2 text-xs font-bold rounded-xl bg-white text-slate-700 border border-slate-200 shadow-sm transition">🌍 Panorama Village</button>
+                <button onclick="switchTab('tab-panorama')" id="btn-tab-panorama" class="tab-btn px-4 py-2 text-xs font-bold rounded-xl bg-white text-slate-700 border border-slate-200 shadow-sm transition">🌍 Panorama Village (Admin)</button>
                 <button onclick="switchTab('tab-profil')" id="btn-tab-profil" class="tab-btn px-4 py-2 text-xs font-bold rounded-xl bg-white text-slate-700 border border-slate-200 shadow-sm transition">🖼️ Mon Profil</button>
             </div>
 
@@ -1059,27 +1062,22 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                 </div>
             </div>
 
-            <!-- ONGLET 5 : PANORAMA VILLAGE (MULTI-UPLOAD SUPPORT) -->
+            <!-- ONGLET 5 : PANORAMA VILLAGE (ADMIN / TRÉSORIER SEULEMENT) -->
             <div id="tab-panorama" class="tab-content hidden space-y-6">
                 <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                    <h2 class="text-base font-bold text-slate-900 mb-4 border-b pb-2">🌍 Partager des Photos du Village (Panorama Multiple)</h2>
+                    <h2 class="text-base font-bold text-slate-900 mb-4 border-b pb-2">🌍 Ajouter des Photos au Panorama (Réservé Admin)</h2>
                     <form action="/panorama-form" method="POST" enctype="multipart/form-data" class="space-y-3 mb-6">
                         <input type="hidden" name="user_id" value="{user['id']}">
                         <div>
-                            <label class="block text-xs font-bold text-slate-600 mb-1">Légende commune ou titre des souvenirs</label>
-                            <input type="text" name="legende" placeholder="ex: Vue panoramique du village et de la mosquée..." required class="w-full p-2.5 text-sm border rounded-lg">
+                            <label class="block text-xs font-bold text-slate-600 mb-1">Légende globale des photos</label>
+                            <input type="text" name="legende" placeholder="ex: Célébration au village..." required class="w-full p-2.5 text-sm border rounded-lg">
                         </div>
                         <div>
-                            <label class="block text-xs font-bold text-slate-600 mb-1">Sélectionnez une ou plusieurs photos (Maintenez Ctrl ou Cmd)</label>
+                            <label class="block text-xs font-bold text-slate-600 mb-1">Sélectionner plusieurs photos (Maintenez Ctrl ou Cmd)</label>
                             <input type="file" name="files_photos" accept="image/*" multiple required class="w-full text-xs text-slate-500 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-emerald-50 file:text-emerald-700">
                         </div>
-                        <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-lg text-sm shadow">Publier les photos</button>
+                        <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-lg text-sm shadow">Publier la sélection dans le Panorama</button>
                     </form>
-
-                    <h3 class="text-xs font-bold text-slate-700 mb-3 border-t pt-4 uppercase">Galerie du Village</h3>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                        {panorama_cards_html or '<p class="col-span-3 text-xs text-slate-400">Aucune photo de panorama publiée pour le moment.</p>'}
-                    </div>
                 </div>
             </div>
 
@@ -1210,25 +1208,6 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                     <button type="submit" class="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-2 rounded-lg text-sm shadow">Envoyer la demande</button>
                 </form>
             </div>
-
-            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
-                <h2 class="text-base font-bold text-slate-900 mb-4 border-b pb-2">🌍 Partager & Voir le Panorama du Village (Plusieurs photos)</h2>
-                <form action="/panorama-form" method="POST" enctype="multipart/form-data" class="space-y-3 mb-6">
-                    <input type="hidden" name="user_id" value="{user['id']}">
-                    <div>
-                        <label class="block text-xs font-bold text-slate-600 mb-1">Légende des photos</label>
-                        <input type="text" name="legende" placeholder="ex: Souvenirs de la fête au village..." required class="w-full p-2.5 text-sm border rounded-lg">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold text-slate-600 mb-1">Sélectionnez plusieurs photos</label>
-                        <input type="file" name="files_photos" accept="image/*" multiple required class="w-full text-xs text-slate-500 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-emerald-50 file:text-emerald-700">
-                    </div>
-                    <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-lg text-sm shadow">Publier les souvenirs</button>
-                </form>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {panorama_cards_html or '<p class="col-span-2 text-xs text-slate-400">Aucune photo de panorama publiée pour le moment.</p>'}
-                </div>
-            </div>
             """
 
         user_photo = f"<img src='{user['photo_profil']}' class='w-16 h-16 rounded-full object-cover shadow-sm' onerror='this.style.display=\"none\"'>" if user['photo_profil'] else "<div class='w-16 h-16 rounded-full bg-slate-200 flex items-center justify-center font-bold text-slate-500 text-xl'>" + user['prenom'][0] + "</div>"
@@ -1307,10 +1286,10 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                 {finance_sections_html}
                 {member_sections_html}
 
-                <!-- PANORAMA DU VILLAGE (FOOTER COMMUN POUR TOUTES LES VUES) -->
+                <!-- PANORAMA DU VILLAGE (FOOTER VISIBLE PAR TOUS EN MODE CONTEMPLATION) -->
                 <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 mt-8">
                     <h3 class="text-center text-base font-black text-slate-900 mb-1">🌍 Souvenirs & Panorama du Village</h3>
-                    <p class="text-center text-xs text-slate-500 mb-6">Photos et moments partagés par la communauté.</p>
+                    <p class="text-center text-xs text-slate-500 mb-6">Contemplez les magnifiques photos du village partagées par l'administration.</p>
                     <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                         {panorama_cards_html or '<p class="col-span-3 text-center text-xs text-slate-400">Aucune photo de panorama publiée pour le moment.</p>'}
                     </div>
