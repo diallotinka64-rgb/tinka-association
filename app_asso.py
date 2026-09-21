@@ -14,7 +14,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="45.0")
+app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="46.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -223,7 +223,7 @@ def paiement_mobile(
             "mode_paiement": mode,
             "statut_paiement": "en_attente"
         }).execute()
-        return HTMLResponse(content=f"<script>alert('Paiement {operateur} déclaré avec succès ! Il est en attente de vérification par le trésorier.'); window.location.href='/dashboard?id={user_id}';</script>")
+        return HTMLResponse(content=f"<script>alert('Paiement {operateur} déclaré avec succès ! En attente de vérification par le trésorier.'); window.location.href='/dashboard?id={user_id}';</script>")
     except Exception as e:
         return HTMLResponse(content=f"<script>alert('Erreur lors du paiement mobile : {str(e)}'); window.location.href='/dashboard?id={user_id}';</script>")
 
@@ -560,7 +560,6 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
         param_res = supabase.table("parametres").select("solde_initial").eq("id", 1).execute()
         solde_initial = param_res.data[0]['solde_initial'] if param_res.data else 0.0
 
-        # CAISSE : Seules les cotisations VALIDÉES et les régularisations (si payées) comptent
         cotisations_caisse = sum([c['montant'] for c in all_cotisations if "regularisation" not in str(c.get('mode_paiement', '')) and c.get('statut_paiement', 'valide') == 'valide'])
         total_aides_approuvees = sum([ai['montant_demande'] for ai in all_aides if ai['statut_validation'] == 'approuve'])
         total_dec = sum([d['montant'] for d in all_decaissements])
@@ -613,9 +612,9 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                 date_paiement_fr = formater_date(pm.get('date_paiement', ''))
                 montant_fmt = formater_montant(pm['montant'])
                 mode_str = pm.get('mode_paiement', '')
-                st_paiement = pm.get('statut_paiement', 'valide')
+                st_paiement = pm.get('statut_paiement', 'en_attente')
 
-                if st_paiement == 'en_attente':
+                if st_paiement != 'valide':
                     action_cell = f"""
                     <form action="/admin/valider-paiement-mobile" method="POST" class="inline">
                         <input type="hidden" name="user_id" value="{user['id']}">
@@ -771,228 +770,251 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
             solde_initial_fmt = formater_montant(solde_initial)
             solde_fmt = formater_montant(solde)
 
+            # ORGANISATION EN ONGLET POUR UN TABLEAU DE BORD AÉRÉ ET SANS DÉFILEMENT MASSIF
             finance_sections_html = f"""
-            <!-- MODIFICATION DE LA PHOTO DE PROFIL POUR L'ADMIN / TRESORIER -->
-            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
-                <h2 class="text-lg font-bold text-slate-700 mb-4 border-b pb-2">🖼️ Modifier ma Photo de Profil</h2>
-                <form action="/modifier-photo" method="POST" enctype="multipart/form-data" class="space-y-3">
-                    <input type="hidden" name="user_id" value="{user['id']}">
-                    <div>
-                        <label class="block text-xs font-bold text-slate-600 mb-1">Choisir une nouvelle photo</label>
-                        <input type="file" name="file_photo" accept="image/*" required class="w-full text-xs text-slate-500 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-emerald-50 file:text-emerald-700">
+            <!-- MENU DES ONGLETS ADMIN / TRÉSORIER -->
+            <div class="flex flex-wrap gap-2 mb-6 border-b border-slate-200 pb-3">
+                <button onclick="switchTab('tab-tresorerie')" id="btn-tab-tresorerie" class="tab-btn px-4 py-2 text-xs font-bold rounded-xl bg-emerald-600 text-white shadow">💼 Trésorerie & Caisse</button>
+                <button onclick="switchTab('tab-adherents')" id="btn-tab-adherents" class="tab-btn px-4 py-2 text-xs font-bold rounded-xl bg-white text-slate-700 border border-slate-200 shadow-sm">👥 Annuaire & Membres</button>
+                <button onclick="switchTab('tab-pointage')" id="btn-tab-pointage" class="tab-btn px-4 py-2 text-xs font-bold rounded-xl bg-white text-slate-700 border border-slate-200 shadow-sm">📋 Pointage & Événements</button>
+                <button onclick="switchTab('tab-projets')" id="btn-tab-projets" class="tab-btn px-4 py-2 text-xs font-bold rounded-xl bg-white text-slate-700 border border-slate-200 shadow-sm">🚀 Projets & Aides</button>
+                <button onclick="switchTab('tab-profil')" id="btn-tab-profil" class="tab-btn px-4 py-2 text-xs font-bold rounded-xl bg-white text-slate-700 border border-slate-200 shadow-sm">🖼️ Mon Profil</button>
+            </div>
+
+            <!-- ONGLET 1 : TRÉSORIER & CAISSE -->
+            <div id="tab-tresorerie" class="tab-content space-y-6">
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                    <h2 class="text-lg font-bold text-emerald-700 mb-4 border-b pb-2">💼 Gestion du Solde Initial & Trésorerie</h2>
+                    
+                    <form action="/admin/maj-solde-initial" method="POST" class="bg-emerald-50 p-4 rounded-xl border border-emerald-100 mb-6 flex flex-col sm:flex-row gap-3 items-end">
+                        <input type="hidden" name="user_id" value="{user['id']}">
+                        <div class="w-full sm:flex-1">
+                            <label class="block text-xs font-bold text-emerald-800 mb-1">Montant total compté en caisse (Solde Initial Réel)</label>
+                            <input type="number" name="solde_initial" value="{solde_initial}" required class="w-full p-2.5 text-sm bg-white border border-emerald-300 rounded-lg">
+                        </div>
+                        <button type="submit" class="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-5 rounded-lg text-sm shadow">Mettre à jour</button>
+                    </form>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4 text-center">
+                        <div class="bg-slate-50 p-3 rounded-xl border border-slate-200"><span class="block text-xs text-slate-500 font-bold uppercase">Solde Initial</span><span class="text-lg font-black text-slate-800">{solde_initial_fmt} CFA</span></div>
+                        <div class="bg-emerald-50 p-3 rounded-xl border border-emerald-100"><span class="block text-xs text-emerald-600 font-bold uppercase">Cotisations Validées</span><span class="text-lg font-black text-emerald-800">{formater_montant(cotisations_caisse)} CFA</span></div>
+                        <div class="bg-red-50 p-3 rounded-xl border border-red-100"><span class="block text-xs text-red-600 font-bold uppercase">Dépenses & Aides</span><span class="text-lg font-black text-red-800">{formater_montant(total_aides_approuvees + total_dec)} CFA</span></div>
                     </div>
-                    <button type="submit" class="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-2 rounded-lg text-sm shadow">Mettre à jour la photo</button>
-                </form>
-            </div>
+                    <div class="text-center bg-slate-900 text-white py-3 rounded-xl font-bold text-lg mb-6">Solde Réel en Caisse : <span class="text-emerald-400">{solde_fmt} CFA</span></div>
 
-            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
-                <h2 class="text-lg font-bold text-emerald-700 mb-4 border-b pb-2">💼 Gestion du Solde Initial & Trésorerie</h2>
-                
-                <form action="/admin/maj-solde-initial" method="POST" class="bg-emerald-50 p-4 rounded-xl border border-emerald-100 mb-6 flex flex-col sm:flex-row gap-3 items-end">
-                    <input type="hidden" name="user_id" value="{user['id']}">
-                    <div class="w-full sm:flex-1">
-                        <label class="block text-xs font-bold text-emerald-800 mb-1">Montant total compté en caisse (Solde Initial Réel)</label>
-                        <input type="number" name="solde_initial" value="{solde_initial}" required class="w-full p-2.5 text-sm bg-white border border-emerald-300 rounded-lg">
+                    <h3 class="text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Répartition des Dépenses</h3>
+                    <ul class="mb-6">{repartition_depenses_html or '<li class="text-sm text-slate-400">Aucune dépense.</li>'}</ul>
+
+                    <h3 class="text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">État des cotisations membres</h3>
+                    <ul class="max-h-60 overflow-y-auto pr-2">{suivi_retards_html}</ul>
+                </div>
+
+                <!-- TABLEAU DE SUIVI DES PAIEMENTS MOBILE MONEY (VALIDATION MANUELLE) -->
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                    <h2 class="text-lg font-bold text-blue-700 mb-2 border-b pb-2">📱 Vérification & Validation des Paiements Mobile Money</h2>
+                    <p class="text-xs text-slate-500 mb-4">Vérifiez l'arrivée effective des fonds sur votre compte Wave ou Orange Money avant de valider pour alimenter la caisse.</p>
+                    <div class="overflow-x-auto max-h-60 overflow-y-auto border border-slate-200 rounded-xl">
+                        <table class="w-full text-left border-collapse bg-white">
+                            <thead class="bg-slate-100 text-slate-600 text-xs uppercase sticky top-0 z-10">
+                                <tr><th class="p-2.5">Adhérent</th><th class="p-2.5">Détails & Référence</th><th class="p-2.5">Montant</th><th class="p-2.5">Période</th><th class="p-2.5">Date</th><th class="p-2.5 text-right">Statut / Action</th></tr>
+                            </thead>
+                            <tbody>{paiements_mobiles_rows or '<tr><td colspan="6" class="p-4 text-center text-sm text-slate-400">Aucun paiement mobile initié pour le moment.</td></tr>'}</tbody>
+                        </table>
                     </div>
-                    <button type="submit" class="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-5 rounded-lg text-sm shadow">Mettre à jour</button>
-                </form>
-
-                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4 text-center">
-                    <div class="bg-slate-50 p-3 rounded-xl border border-slate-200"><span class="block text-xs text-slate-500 font-bold uppercase">Solde Initial</span><span class="text-lg font-black text-slate-800">{solde_initial_fmt} CFA</span></div>
-                    <div class="bg-emerald-50 p-3 rounded-xl border border-emerald-100"><span class="block text-xs text-emerald-600 font-bold uppercase">Cotisations Validées</span><span class="text-lg font-black text-emerald-800">{formater_montant(cotisations_caisse)} CFA</span></div>
-                    <div class="bg-red-50 p-3 rounded-xl border border-red-100"><span class="block text-xs text-red-600 font-bold uppercase">Dépenses & Aides</span><span class="text-lg font-black text-red-800">{formater_montant(total_aides_approuvees + total_dec)} CFA</span></div>
-                </div>
-                <div class="text-center bg-slate-900 text-white py-3 rounded-xl font-bold text-lg mb-6">Solde Réel en Caisse : <span class="text-emerald-400">{solde_fmt} CFA</span></div>
-
-                <h3 class="text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Répartition des Dépenses</h3>
-                <ul class="mb-6">{repartition_depenses_html or '<li class="text-sm text-slate-400">Aucune dépense.</li>'}</ul>
-
-                <h3 class="text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">État des cotisations</h3>
-                <ul class="max-h-60 overflow-y-auto pr-2">{suivi_retards_html}</ul>
-            </div>
-
-            <!-- TABLEAU DE SUIVI DES PAIEMENTS MOBILE MONEY (AVEC VÉRIFICATION MANUELLE) -->
-            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
-                <h2 class="text-lg font-bold text-blue-700 mb-2 border-b pb-2">📱 Vérification & Validation des Paiements Mobile Money</h2>
-                <p class="text-xs text-slate-500 mb-4">Ces paiements sont déclarés par les membres. Vérifiez l'arrivée effective des fonds sur votre compte Wave ou Orange Money avant de valider.</p>
-                <div class="overflow-x-auto max-h-60 overflow-y-auto border border-slate-200 rounded-xl">
-                    <table class="w-full text-left border-collapse bg-white">
-                        <thead class="bg-slate-100 text-slate-600 text-xs uppercase sticky top-0 z-10">
-                            <tr><th class="p-2.5">Adhérent</th><th class="p-2.5">Détails & Référence</th><th class="p-2.5">Montant</th><th class="p-2.5">Période</th><th class="p-2.5">Date</th><th class="p-2.5 text-right">Statut / Action</th></tr>
-                        </thead>
-                        <tbody>{paiements_mobiles_rows or '<tr><td colspan="6" class="p-4 text-center text-sm text-slate-400">Aucun paiement mobile initié pour le moment.</td></tr>'}</tbody>
-                    </table>
-                </div>
-            </div>
-
-            <!-- ESPACE VALIDATION DES DEMANDES D'AIDE -->
-            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
-                <h2 class="text-lg font-bold text-amber-700 mb-4 border-b pb-2">🤝 Demandes d'Aide Communautaire (Validation)</h2>
-                <ul class="max-h-60 overflow-y-auto">{aides_admin_html or '<li class="text-sm text-slate-400">Aucune demande d\'aide en attente.</li>'}</ul>
-            </div>
-
-            <!-- MODULE POINTAGE & SCANNER QR CODE -->
-            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
-                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 border-b pb-2 gap-2">
-                    <h2 class="text-lg font-bold text-teal-700">📋 Pointage & Scanner QR Code</h2>
-                    <button type="button" onclick="toggleScanner()" class="bg-teal-600 hover:bg-teal-700 text-white px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow">📷 Ouvrir / Fermer le Scanner Caméra</button>
                 </div>
 
-                <div id="scanner-container" class="hidden mb-6 p-4 bg-slate-900 rounded-2xl text-center">
-                    <p class="text-xs text-emerald-400 font-bold mb-2">Pointez la caméra vers le QR Code de la carte du membre</p>
-                    <div id="reader" class="mx-auto max-w-sm rounded-xl overflow-hidden bg-black"></div>
-                    <p id="scan-result" class="text-xs text-white mt-3 font-mono"></p>
-                </div>
-
-                <form action="/presences-form" method="POST" class="space-y-4">
-                    <input type="hidden" name="user_id" value="{user['id']}">
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <!-- ENREGISTREMENT COTISATION / REGULARISATION -->
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                    <h2 class="text-lg font-bold text-purple-600 mb-4 border-b pb-2">➕ Enregistrer une Cotisation ou Régularisation</h2>
+                    <form action="/cotisations-form" method="POST" class="space-y-4">
+                        <input type="hidden" name="user_id" value="{user['id']}">
                         <div>
-                            <label class="block text-xs font-bold text-slate-600 mb-1">Événement / Réunion</label>
-                            <select name="evenement_titre" required class="w-full p-2.5 border rounded-lg text-sm bg-white">{options_evenements_titres}</select>
+                            <label class="block text-xs font-bold text-slate-600 mb-1">Choisir un Adhérent</label>
+                            <select name="adherent_id" required class="w-full p-2.5 border rounded-lg text-sm bg-white" size="4">
+                                <option value="">-- Sélectionner dans la liste --</option>
+                                {options_adherents}
+                            </select>
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <div><label class="block text-xs font-bold text-slate-600 mb-1">Montant (CFA)</label><input type="number" name="montant" required class="w-full p-2.5 border rounded-lg text-sm"></div>
+                            <div><label class="block text-xs font-bold text-slate-600 mb-1">Période (Mois ou Plage)</label><input type="text" name="periode" placeholder="ex: 2026-09 ou Sept-Janv" required class="w-full p-2.5 border rounded-lg text-sm bg-white"></div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-600 mb-1">Mode de règlement</label>
+                                <select name="mode_paiement" class="w-full p-2.5 border rounded-lg text-sm bg-white">
+                                    <option value="especes">Espèces</option>
+                                    <option value="mobile_money">Mobile Money (Wave / OM)</option>
+                                    <option value="regularisation" class="font-bold text-purple-700">🔄 Régularisation (Sans impacter la caisse)</option>
+                                </select>
+                            </div>
+                        </div>
+                        <button type="submit" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2.5 rounded-lg text-sm">Valider l'enregistrement</button>
+                    </form>
+                </div>
+
+                <!-- MODULE DÉCAISSEMENTS & SORTIES DE CAISSE -->
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                    <h2 class="text-lg font-bold text-red-600 mb-4 border-b pb-2">💸 Enregistrer un Décaissement (Sortie d'argent)</h2>
+                    <form action="/decaissements-form" method="POST" class="space-y-3">
+                        <input type="hidden" name="user_id" value="{user['id']}">
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <div><label class="block text-xs font-bold text-slate-600 mb-1">Motif de la dépense</label><input type="text" name="motif" required class="w-full p-2 text-sm border rounded-lg"></div>
+                            <div><label class="block text-xs font-bold text-slate-600 mb-1">Montant (CFA)</label><input type="number" name="montant" required class="w-full p-2 text-sm border rounded-lg"></div>
+                            <div><label class="block text-xs font-bold text-slate-600 mb-1">Bénéficiaire</label><input type="text" name="beneficiaire" required class="w-full p-2 text-sm border rounded-lg"></div>
                         </div>
                         <div>
-                            <label class="block text-xs font-bold text-slate-600 mb-1">Date</label>
-                            <input type="date" name="date_reunion" required class="w-full p-2.5 border rounded-lg text-sm bg-white">
+                            <label class="block text-xs font-bold text-slate-600 mb-1">Catégorie</label>
+                            <select name="categorie" required class="w-full p-2 text-sm border rounded-lg bg-white">
+                                <option value="Daara">Daara (École coranique)</option>
+                                <option value="Social">Social / Aide humanitaire</option>
+                                <option value="Logistique">Logistique & Fonctionnement</option>
+                                <option value="Divers">Divers</option>
+                            </select>
                         </div>
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold text-slate-600 mb-1">Membre (ou scanné par QR Code)</label>
-                        <input type="text" id="searchSelectPresence" placeholder="🔍 Filtrer le membre..." onkeyup="filtrerSelectPresence()" class="w-full p-2.5 mb-2 border rounded-lg text-sm bg-slate-50">
-                        <select name="adherent_id" id="selectPresenceAdherent" required class="w-full p-2.5 border rounded-lg text-sm bg-white" size="4">
-                            <option value="">-- Choisir un membre --</option>
-                            {options_presence_adherents}
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold text-slate-600 mb-1">Statut</label>
-                        <select name="statut_presence" required class="w-full p-2.5 border rounded-lg text-sm bg-white">
-                            <option value="Present">🟢 Présent(e)</option>
-                            <option value="Absent_excuse">🟡 Absent(e) excusé(e)</option>
-                            <option value="Absent_non_excuse">🔴 Absent(e) non excusé(e)</option>
-                        </select>
-                    </div>
-                    <button type="submit" class="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-2.5 rounded-lg text-sm shadow">Enregistrer le pointage</button>
-                </form>
+                        <button type="submit" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2 rounded-lg text-sm shadow">Enregistrer la sortie</button>
+                    </form>
+                </div>
             </div>
 
-            <!-- ANNUAIRE DES ADHÉRENTS -->
-            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
-                <div class="flex flex-col sm:flex-row justify-between items-center mb-4 border-b pb-2 gap-2">
-                    <div>
-                        <h2 class="text-lg font-bold text-slate-700">👥 Annuaire des Adhérents ({len(all_adherents)})</h2>
+            <!-- ONGLET 2 : ANNUAIRE & MEMBRES -->
+            <div id="tab-adherents" class="tab-content hidden space-y-6">
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                    <div class="flex flex-col sm:flex-row justify-between items-center mb-4 border-b pb-2 gap-2">
+                        <div>
+                            <h2 class="text-lg font-bold text-slate-700">👥 Annuaire des Adhérents ({len(all_adherents)})</h2>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <a href="/adherents/export-pdf" target="_blank" class="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow flex items-center gap-1">📄 Exporter PDF</a>
+                            <input type="text" id="searchAdherent" placeholder="🔍 Rechercher..." onkeyup="filtrerAdherents()" class="p-2 text-xs border rounded-lg bg-slate-50 w-48">
+                        </div>
                     </div>
-                    <div class="flex items-center gap-2">
-                        <a href="/adherents/export-pdf" target="_blank" class="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow flex items-center gap-1">📄 Exporter PDF</a>
-                        <input type="text" id="searchAdherent" placeholder="🔍 Rechercher..." onkeyup="filtrerAdherents()" class="p-2 text-xs border rounded-lg bg-slate-50 w-48">
+                    <div class="overflow-x-auto max-h-[450px] overflow-y-auto border border-slate-200 rounded-xl">
+                        <table class="w-full text-left border-collapse bg-white">
+                            <thead class="bg-slate-100 text-slate-600 text-xs uppercase sticky top-0 z-10">
+                                <tr><th class="p-2.5">Nom & Prénom</th><th class="p-2.5">Rôle</th><th class="p-2.5">Secteur</th><th class="p-2.5">Téléphone</th><th class="p-2.5">Statut</th><th class="p-2.5 text-right">Actions</th></tr>
+                            </thead>
+                            <tbody id="adherentsTableBody">{adherents_table_rows}</tbody>
+                        </table>
                     </div>
                 </div>
-                <div class="overflow-x-auto max-h-[400px] overflow-y-auto border border-slate-200 rounded-xl">
-                    <table class="w-full text-left border-collapse bg-white">
-                        <thead class="bg-slate-100 text-slate-600 text-xs uppercase sticky top-0 z-10">
-                            <tr><th class="p-2.5">Nom & Prénom</th><th class="p-2.5">Rôle</th><th class="p-2.5">Secteur</th><th class="p-2.5">Téléphone</th><th class="p-2.5">Statut</th><th class="p-2.5 text-right">Actions</th></tr>
-                        </thead>
-                        <tbody id="adherentsTableBody">{adherents_table_rows}</tbody>
-                    </table>
+            </div>
+
+            <!-- ONGLET 3 : POINTAGE & ÉVÉNEMENTS -->
+            <div id="tab-pointage" class="tab-content hidden space-y-6">
+                <!-- MODULE PLANIFICATION ÉVÉNEMENTS -->
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                    <h2 class="text-lg font-bold text-blue-700 mb-4 border-b pb-2">📅 Planifier un Événement ou une Réunion</h2>
+                    <form action="/evenements-form" method="POST" class="space-y-3">
+                        <input type="hidden" name="user_id" value="{user['id']}">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div><label class="block text-xs font-bold text-slate-600 mb-1">Titre de l'événement</label><input type="text" name="titre" required class="w-full p-2 text-sm border rounded-lg"></div>
+                            <div><label class="block text-xs font-bold text-slate-600 mb-1">Date</label><input type="date" name="date_evenement" required class="w-full p-2 text-sm border rounded-lg"></div>
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <div><label class="block text-xs font-bold text-slate-600 mb-1">Lieu</label><input type="text" name="lieu" required class="w-full p-2 text-sm border rounded-lg"></div>
+                            <div><label class="block text-xs font-bold text-slate-600 mb-1">Type</label><input type="text" name="type_evenement" placeholder="ex: Réunion, Assemblée..." required class="w-full p-2 text-sm border rounded-lg"></div>
+                            <div><label class="block text-xs font-bold text-slate-600 mb-1">Statut</label><select name="statut" class="w-full p-2 text-sm border rounded-lg"><option value="Prevu">Prévu</option><option value="En cours">En cours</option><option value="Termine">Terminé</option></select></div>
+                        </div>
+                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Description</label><textarea name="description" rows="2" class="w-full p-2 text-sm border rounded-lg"></textarea></div>
+                        <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded-lg text-sm shadow">Enregistrer l'événement</button>
+                    </form>
+                </div>
+
+                <!-- MODULE POINTAGE & SCANNER QR CODE -->
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 border-b pb-2 gap-2">
+                        <h2 class="text-lg font-bold text-teal-700">📋 Pointage & Scanner QR Code</h2>
+                        <button type="button" onclick="toggleScanner()" class="bg-teal-600 hover:bg-teal-700 text-white px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow">📷 Ouvrir / Fermer le Scanner Caméra</button>
+                    </div>
+
+                    <div id="scanner-container" class="hidden mb-6 p-4 bg-slate-900 rounded-2xl text-center">
+                        <p class="text-xs text-emerald-400 font-bold mb-2">Pointez la caméra vers le QR Code de la carte du membre</p>
+                        <div id="reader" class="mx-auto max-w-sm rounded-xl overflow-hidden bg-black"></div>
+                        <p id="scan-result" class="text-xs text-white mt-3 font-mono"></p>
+                    </div>
+
+                    <form action="/presences-form" method="POST" class="space-y-4">
+                        <input type="hidden" name="user_id" value="{user['id']}">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-600 mb-1">Événement / Réunion</label>
+                                <select name="evenement_titre" required class="w-full p-2.5 border rounded-lg text-sm bg-white">{options_evenements_titres}</select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-600 mb-1">Date</label>
+                                <input type="date" name="date_reunion" required class="w-full p-2.5 border rounded-lg text-sm bg-white">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-600 mb-1">Membre (ou scanné par QR Code)</label>
+                            <input type="text" id="searchSelectPresence" placeholder="🔍 Filtrer le membre..." onkeyup="filtrerSelectPresence()" class="w-full p-2.5 mb-2 border rounded-lg text-sm bg-slate-50">
+                            <select name="adherent_id" id="selectPresenceAdherent" required class="w-full p-2.5 border rounded-lg text-sm bg-white" size="4">
+                                <option value="">-- Choisir un membre --</option>
+                                {options_presence_adherents}
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-600 mb-1">Statut</label>
+                            <select name="statut_presence" required class="w-full p-2.5 border rounded-lg text-sm bg-white">
+                                <option value="Present">🟢 Présent(e)</option>
+                                <option value="Absent_excuse">🟡 Absent(e) excusé(e)</option>
+                                <option value="Absent_non_excuse">🔴 Absent(e) non excusé(e)</option>
+                            </select>
+                        </div>
+                        <button type="submit" class="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-2.5 rounded-lg text-sm shadow">Enregistrer le pointage</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- ONGLET 4 : PROJETS & AIDES -->
+            <div id="tab-projets" class="tab-content hidden space-y-6">
+                <!-- ESPACE VALIDATION DES DEMANDES D'AIDE -->
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                    <h2 class="text-lg font-bold text-amber-700 mb-4 border-b pb-2">🤝 Demandes d'Aide Communautaire (Validation)</h2>
+                    <ul class="max-h-60 overflow-y-auto">{aides_admin_html or '<li class="text-sm text-slate-400">Aucune demande d\'aide en attente.</li>'}</ul>
+                </div>
+
+                <!-- MODULE GESTION DES PROJETS ADMIN -->
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                    <h2 class="text-lg font-bold text-indigo-700 mb-4 border-b pb-2">🚀 Ajouter un Projet (Daara & Communauté)</h2>
+                    <form action="/projets-form" method="POST" enctype="multipart/form-data" class="space-y-3 mb-6">
+                        <input type="hidden" name="user_id" value="{user['id']}">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div><label class="block text-xs font-bold text-slate-600 mb-1">Titre du projet</label><input type="text" name="titre" required class="w-full p-2 text-sm border rounded-lg"></div>
+                            <div><label class="block text-xs font-bold text-slate-600 mb-1">Coût estimé (CFA)</label><input type="number" name="cout" required class="w-full p-2 text-sm border rounded-lg"></div>
+                        </div>
+                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Description</label><textarea name="description" rows="2" required class="w-full p-2 text-sm border rounded-lg"></textarea></div>
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <div><label class="block text-xs font-bold text-slate-600 mb-1">Objectifs</label><input type="text" name="objectifs" required class="w-full p-2 text-sm border rounded-lg"></div>
+                            <div><label class="block text-xs font-bold text-slate-600 mb-1">Chronologie / Planning</label><input type="text" name="chronologie" placeholder="ex: Octobre - Décembre" required class="w-full p-2 text-sm border rounded-lg"></div>
+                            <div><label class="block text-xs font-bold text-slate-600 mb-1">Statut</label><select name="statut" class="w-full p-2 text-sm border rounded-lg"><option value="En cours">En cours</option><option value="Planifie">Planifié</option><option value="Termine">Terminé</option></select></div>
+                        </div>
+                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Photo / Illustration du projet</label><input type="file" name="file_projet" accept="image/*" class="w-full text-xs text-slate-500 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:text-indigo-700"></div>
+                        <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 rounded-lg text-sm shadow">Enregistrer le projet</button>
+                    </form>
+
+                    <h3 class="text-sm font-bold text-slate-700 mb-3 border-t pt-4 uppercase">Projets enregistrés</h3>
+                    <div class="max-h-96 overflow-y-auto">
+                        {projets_cards_html or '<p class="text-xs text-slate-400">Aucun projet enregistré pour le moment.</p>'}
+                    </div>
+                </div>
+            </div>
+
+            <!-- ONGLET 5 : MON PROFIL -->
+            <div id="tab-profil" class="tab-content hidden space-y-6">
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                    <h2 class="text-lg font-bold text-slate-700 mb-4 border-b pb-2">🖼️ Modifier ma Photo de Profil</h2>
+                    <form action="/modifier-photo" method="POST" enctype="multipart/form-data" class="space-y-3">
+                        <input type="hidden" name="user_id" value="{user['id']}">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-600 mb-1">Choisir une nouvelle photo</label>
+                            <input type="file" name="file_photo" accept="image/*" required class="w-full text-xs text-slate-500 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-emerald-50 file:text-emerald-700">
+                        </div>
+                        <button type="submit" class="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-2 rounded-lg text-sm shadow">Mettre à jour la photo</button>
+                    </form>
                 </div>
             </div>
 
             {modals_html}
-
-            <!-- ENREGISTREMENT COTISATION / REGULARISATION -->
-            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
-                <h2 class="text-lg font-bold text-purple-600 mb-4 border-b pb-2">➕ Enregistrer une Cotisation ou Régularisation</h2>
-                <form action="/cotisations-form" method="POST" class="space-y-4">
-                    <input type="hidden" name="user_id" value="{user['id']}">
-                    <div>
-                        <label class="block text-xs font-bold text-slate-600 mb-1">Choisir un Adhérent</label>
-                        <select name="adherent_id" required class="w-full p-2.5 border rounded-lg text-sm bg-white" size="4">
-                            <option value="">-- Sélectionner dans la liste --</option>
-                            {options_adherents}
-                        </select>
-                    </div>
-                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Montant (CFA)</label><input type="number" name="montant" required class="w-full p-2.5 border rounded-lg text-sm"></div>
-                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Période (Mois ou Plage)</label><input type="text" name="periode" placeholder="ex: 2026-09 ou Sept-Janv" required class="w-full p-2.5 border rounded-lg text-sm bg-white"></div>
-                        <div>
-                            <label class="block text-xs font-bold text-slate-600 mb-1">Mode de règlement</label>
-                            <select name="mode_paiement" class="w-full p-2.5 border rounded-lg text-sm bg-white">
-                                <option value="especes">Espèces</option>
-                                <option value="mobile_money">Mobile Money (Wave / OM)</option>
-                                <option value="regularisation" class="font-bold text-purple-700">🔄 Régularisation (Sans impacter la caisse)</option>
-                            </select>
-                        </div>
-                    </div>
-                    <button type="submit" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2.5 rounded-lg text-sm">Valider l'enregistrement</button>
-                </form>
-            </div>
-
-            <!-- MODULE PLANIFICATION ÉVÉNEMENTS -->
-            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
-                <h2 class="text-lg font-bold text-blue-700 mb-4 border-b pb-2">📅 Planifier un Événement ou une Réunion</h2>
-                <form action="/evenements-form" method="POST" class="space-y-3">
-                    <input type="hidden" name="user_id" value="{user['id']}">
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Titre de l'événement</label><input type="text" name="titre" required class="w-full p-2 text-sm border rounded-lg"></div>
-                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Date</label><input type="date" name="date_evenement" required class="w-full p-2 text-sm border rounded-lg"></div>
-                    </div>
-                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Lieu</label><input type="text" name="lieu" required class="w-full p-2 text-sm border rounded-lg"></div>
-                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Type</label><input type="text" name="type_evenement" placeholder="ex: Réunion, Assemblée..." required class="w-full p-2 text-sm border rounded-lg"></div>
-                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Statut</label><select name="statut" class="w-full p-2 text-sm border rounded-lg"><option value="Prevu">Prévu</option><option value="En cours">En cours</option><option value="Termine">Terminé</option></select></div>
-                    </div>
-                    <div><label class="block text-xs font-bold text-slate-600 mb-1">Description</label><textarea name="description" rows="2" class="w-full p-2 text-sm border rounded-lg"></textarea></div>
-                    <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded-lg text-sm shadow">Enregistrer l'événement</button>
-                </form>
-            </div>
-
-            <!-- MODULE GESTION DES PROJETS ADMIN -->
-            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
-                <h2 class="text-lg font-bold text-indigo-700 mb-4 border-b pb-2">🚀 Ajouter un Projet (Daara & Communauté)</h2>
-                <form action="/projets-form" method="POST" enctype="multipart/form-data" class="space-y-3 mb-6">
-                    <input type="hidden" name="user_id" value="{user['id']}">
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Titre du projet</label><input type="text" name="titre" required class="w-full p-2 text-sm border rounded-lg"></div>
-                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Coût estimé (CFA)</label><input type="number" name="cout" required class="w-full p-2 text-sm border rounded-lg"></div>
-                    </div>
-                    <div><label class="block text-xs font-bold text-slate-600 mb-1">Description</label><textarea name="description" rows="2" required class="w-full p-2 text-sm border rounded-lg"></textarea></div>
-                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Objectifs</label><input type="text" name="objectifs" required class="w-full p-2 text-sm border rounded-lg"></div>
-                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Chronologie / Planning</label><input type="text" name="chronologie" placeholder="ex: Octobre - Décembre" required class="w-full p-2 text-sm border rounded-lg"></div>
-                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Statut</label><select name="statut" class="w-full p-2 text-sm border rounded-lg"><option value="En cours">En cours</option><option value="Planifie">Planifié</option><option value="Termine">Terminé</option></select></div>
-                    </div>
-                    <div><label class="block text-xs font-bold text-slate-600 mb-1">Photo / Illustration du projet</label><input type="file" name="file_projet" accept="image/*" class="w-full text-xs text-slate-500 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:text-indigo-700"></div>
-                    <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 rounded-lg text-sm shadow">Enregistrer le projet</button>
-                </form>
-
-                <h3 class="text-sm font-bold text-slate-700 mb-3 border-t pt-4 uppercase">Projets enregistrés</h3>
-                <div class="max-h-96 overflow-y-auto">
-                    {projets_cards_html or '<p class="text-xs text-slate-400">Aucun projet enregistré pour le moment.</p>'}
-                </div>
-            </div>
-
-            <!-- MODULE DÉCAISSEMENTS & SORTIES DE CAISSE -->
-            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
-                <h2 class="text-lg font-bold text-red-600 mb-4 border-b pb-2">💸 Enregistrer un Décaissement (Sortie d'argent)</h2>
-                <form action="/decaissements-form" method="POST" class="space-y-3">
-                    <input type="hidden" name="user_id" value="{user['id']}">
-                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Motif de la dépense</label><input type="text" name="motif" required class="w-full p-2 text-sm border rounded-lg"></div>
-                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Montant (CFA)</label><input type="number" name="montant" required class="w-full p-2 text-sm border rounded-lg"></div>
-                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Bénéficiaire</label><input type="text" name="beneficiaire" required class="w-full p-2 text-sm border rounded-lg"></div>
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold text-slate-600 mb-1">Catégorie</label>
-                        <select name="categorie" required class="w-full p-2 text-sm border rounded-lg bg-white">
-                            <option value="Daara">Daara (École coranique)</option>
-                            <option value="Social">Social / Aide humanitaire</option>
-                            <option value="Logistique">Logistique & Fonctionnement</option>
-                            <option value="Divers">Divers</option>
-                        </select>
-                    </div>
-                    <button type="submit" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2 rounded-lg text-sm shadow">Enregistrer la sortie</button>
-                </form>
-            </div>
             """
 
         member_sections_html = ""
@@ -1137,6 +1159,22 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                     }} else {{
                         container.classList.add('hidden');
                         if (html5QrCode && html5QrCode.isScanning) html5QrCode.stop();
+                    }}
+                }}
+                function switchTab(tabId) {{
+                    let contents = document.getElementsByClassName('tab-content');
+                    for (let c of contents) c.classList.add('hidden');
+                    document.getElementById(tabId).classList.remove('hidden');
+
+                    let buttons = document.getElementsByClassName('tab-btn');
+                    for (let b of buttons) {{
+                        b.classList.remove('bg-emerald-600', 'text-white', 'shadow');
+                        b.classList.add('bg-white', 'text-slate-700', 'border', 'border-slate-200');
+                    }}
+                    let activeBtn = document.getElementById('btn-' + tabId);
+                    if (activeBtn) {{
+                        activeBtn.classList.remove('bg-white', 'text-slate-700', 'border', 'border-slate-200');
+                        activeBtn.classList.add('bg-emerald-600', 'text-white', 'shadow');
                     }}
                 }}
                 function openModal(id) {{ document.getElementById('modal-' + id).classList.remove('hidden'); }}
