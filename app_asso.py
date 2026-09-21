@@ -14,7 +14,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="46.0")
+app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="47.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -275,6 +275,24 @@ def ajouter_evenement(
     }).execute()
     return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
 
+@app.post("/panorama-form/")
+@app.post("/panorama-form")
+async def ajouter_panorama(user_id: int = Form(...), legende: str = Form(...), file_photo: UploadFile = File(...)):
+    try:
+        photo_path = ""
+        if file_photo and file_photo.filename:
+            file_location = os.path.join(UPLOAD_DIR, file_photo.filename)
+            with open(file_location, "wb+") as file_object:
+                file_object.write(await file_photo.read())
+            photo_path = f"/static/uploads/{file_photo.filename}"
+
+        supabase.table("panorama_village").insert({
+            "legende": legende, "photo_url": photo_path, "auteur_id": user_id
+        }).execute()
+        return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
+    except Exception:
+        return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
+
 @app.post("/presences-form/")
 @app.post("/presences-form")
 def enregistrer_presence(user_id: int = Form(...), adherent_id: int = Form(...), evenement_titre: str = Form(...), statut_presence: str = Form(...), date_reunion: str = Form(...)):
@@ -437,6 +455,27 @@ def afficher_portail():
     url_site = "https://tinka-association.onrender.com"
     qr_b64 = generer_qrcode_base64(url_site)
 
+    # Récupération panorama pour affichage public sur la page d'accueil
+    try:
+        panorama_res = supabase.table("panorama_village").select("*, adherents(nom, prenom)").order("id", desc=True).execute()
+        all_panorama = panorama_res.data
+    except Exception:
+        all_panorama = []
+
+    panorama_cards_public = ""
+    for pano in all_panorama:
+        adh_p = pano.get('adherents', {}) or {}
+        auteur_nom = f"{adh_p.get('prenom', '')} {adh_p.get('nom', '')}" if adh_p else "Village"
+        panorama_cards_public += f"""
+        <div class="bg-white rounded-2xl overflow-hidden shadow-sm border border-slate-200 flex flex-col">
+            <img src="{pano['photo_url']}" class="w-full h-48 object-cover" onerror="this.style.display='none'">
+            <div class="p-4 flex-1 flex flex-col justify-between">
+                <p class="text-xs font-semibold text-slate-800 mb-2">"{pano['legende']}"</p>
+                <span class="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full self-start">📸 Par {auteur_nom}</span>
+            </div>
+        </div>
+        """
+
     return f"""
     <!DOCTYPE html>
     <html lang="fr">
@@ -446,8 +485,8 @@ def afficher_portail():
         <title>Tinka ka Mein Haaldi fotti</title>
         <script src="https://cdn.tailwindcss.com"></script>
     </head>
-    <body class="bg-slate-50 text-slate-800 font-sans antialiased min-h-screen py-8 px-4">
-        <div class="max-w-md mx-auto bg-white rounded-2xl shadow-xl p-6 sm:p-8 border border-slate-100">
+    <body class="bg-slate-50 text-slate-800 font-sans antialiased min-h-screen py-8 px-4 flex flex-col justify-between">
+        <div class="max-w-md mx-auto w-full bg-white rounded-2xl shadow-xl p-6 sm:p-8 border border-slate-100 mb-8">
             <div class="text-center mb-6">
                 <span class="inline-block bg-emerald-100 text-emerald-800 text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider mb-2">Portail Officiel</span>
                 <h1 class="text-2xl font-black text-slate-900 tracking-tight">Tinka ka Mein Haaldi fotti</h1>
@@ -515,6 +554,15 @@ def afficher_portail():
                 </div>
             </div>
         </div>
+
+        <!-- PANORAMA DU VILLAGE (FOOTER PUBLIC) -->
+        <div class="max-w-4xl mx-auto w-full bg-slate-100 p-6 rounded-3xl border border-slate-200 mt-6">
+            <h3 class="text-center text-lg font-black text-slate-800 mb-1">🌍 Souvenirs & Panorama du Village</h3>
+            <p class="text-center text-xs text-slate-500 mb-6">Découvrez les photos prises au village partagées par la communauté.</p>
+            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                {panorama_cards_public or '<p class="col-span-3 text-center text-xs text-slate-400 py-4">Aucune photo de panorama publiée pour le moment.</p>'}
+            </div>
+        </div>
     </body>
     </html>
     """
@@ -557,6 +605,12 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
         except Exception:
             all_presences = []
 
+        try:
+            panorama_res = supabase.table("panorama_village").select("*, adherents(nom, prenom)").order("id", desc=True).execute()
+            all_panorama = panorama_res.data
+        except Exception:
+            all_panorama = []
+
         param_res = supabase.table("parametres").select("solde_initial").eq("id", 1).execute()
         solde_initial = param_res.data[0]['solde_initial'] if param_res.data else 0.0
 
@@ -584,6 +638,20 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                     <div><b>🎯 Objectifs :</b> {pr.get('objectifs', 'Non spécifié')}</div>
                     <div><b>📅 Planning :</b> {pr.get('chronologie', 'Non spécifié')}</div>
                     <div class="font-bold text-emerald-700">💰 Budget estimé : {formater_montant(pr['cout'])} CFA</div>
+                </div>
+            </div>
+            """
+
+        panorama_cards_html = ""
+        for pano in all_panorama:
+            adh_p = pano.get('adherents', {}) or {}
+            auteur_nom = f"{adh_p.get('prenom', '')} {adh_p.get('nom', '')}" if adh_p else "Membre"
+            panorama_cards_html += f"""
+            <div class="bg-white rounded-2xl overflow-hidden shadow-sm border border-slate-200 flex flex-col">
+                <img src="{pano['photo_url']}" class="w-full h-44 object-cover" onerror="this.style.display='none'">
+                <div class="p-3 flex-1 flex flex-col justify-between">
+                    <p class="text-xs font-semibold text-slate-800 mb-2">"{pano['legende']}"</p>
+                    <span class="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full self-start">📸 Par {auteur_nom}</span>
                 </div>
             </div>
             """
@@ -770,21 +838,21 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
             solde_initial_fmt = formater_montant(solde_initial)
             solde_fmt = formater_montant(solde)
 
-            # ORGANISATION EN ONGLET POUR UN TABLEAU DE BORD AÉRÉ ET SANS DÉFILEMENT MASSIF
+            # BARRE D'ONGLETS AUX COULEURS HARMONIEUSES ET TYPOGRAPHIE SOIGNÉE
             finance_sections_html = f"""
-            <!-- MENU DES ONGLETS ADMIN / TRÉSORIER -->
             <div class="flex flex-wrap gap-2 mb-6 border-b border-slate-200 pb-3">
-                <button onclick="switchTab('tab-tresorerie')" id="btn-tab-tresorerie" class="tab-btn px-4 py-2 text-xs font-bold rounded-xl bg-emerald-600 text-white shadow">💼 Trésorerie & Caisse</button>
-                <button onclick="switchTab('tab-adherents')" id="btn-tab-adherents" class="tab-btn px-4 py-2 text-xs font-bold rounded-xl bg-white text-slate-700 border border-slate-200 shadow-sm">👥 Annuaire & Membres</button>
-                <button onclick="switchTab('tab-pointage')" id="btn-tab-pointage" class="tab-btn px-4 py-2 text-xs font-bold rounded-xl bg-white text-slate-700 border border-slate-200 shadow-sm">📋 Pointage & Événements</button>
-                <button onclick="switchTab('tab-projets')" id="btn-tab-projets" class="tab-btn px-4 py-2 text-xs font-bold rounded-xl bg-white text-slate-700 border border-slate-200 shadow-sm">🚀 Projets & Aides</button>
-                <button onclick="switchTab('tab-profil')" id="btn-tab-profil" class="tab-btn px-4 py-2 text-xs font-bold rounded-xl bg-white text-slate-700 border border-slate-200 shadow-sm">🖼️ Mon Profil</button>
+                <button onclick="switchTab('tab-tresorerie')" id="btn-tab-tresorerie" class="tab-btn px-4 py-2 text-xs font-bold rounded-xl bg-slate-900 text-white shadow-md transition">💼 Trésorerie & Caisse</button>
+                <button onclick="switchTab('tab-adherents')" id="btn-tab-adherents" class="tab-btn px-4 py-2 text-xs font-bold rounded-xl bg-white text-slate-700 border border-slate-200 shadow-sm transition">👥 Annuaire & Membres</button>
+                <button onclick="switchTab('tab-pointage')" id="btn-tab-pointage" class="tab-btn px-4 py-2 text-xs font-bold rounded-xl bg-white text-slate-700 border border-slate-200 shadow-sm transition">📋 Planification & Pointage</button>
+                <button onclick="switchTab('tab-projets')" id="btn-tab-projets" class="tab-btn px-4 py-2 text-xs font-bold rounded-xl bg-white text-slate-700 border border-slate-200 shadow-sm transition">🚀 Projets & Aides</button>
+                <button onclick="switchTab('tab-panorama')" id="btn-tab-panorama" class="tab-btn px-4 py-2 text-xs font-bold rounded-xl bg-white text-slate-700 border border-slate-200 shadow-sm transition">🌍 Panorama Village</button>
+                <button onclick="switchTab('tab-profil')" id="btn-tab-profil" class="tab-btn px-4 py-2 text-xs font-bold rounded-xl bg-white text-slate-700 border border-slate-200 shadow-sm transition">🖼️ Mon Profil</button>
             </div>
 
             <!-- ONGLET 1 : TRÉSORIER & CAISSE -->
             <div id="tab-tresorerie" class="tab-content space-y-6">
                 <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                    <h2 class="text-lg font-bold text-emerald-700 mb-4 border-b pb-2">💼 Gestion du Solde Initial & Trésorerie</h2>
+                    <h2 class="text-base font-bold text-slate-900 mb-4 border-b pb-2 flex items-center gap-2">💼 Gestion du Solde Initial & Trésorerie</h2>
                     
                     <form action="/admin/maj-solde-initial" method="POST" class="bg-emerald-50 p-4 rounded-xl border border-emerald-100 mb-6 flex flex-col sm:flex-row gap-3 items-end">
                         <input type="hidden" name="user_id" value="{user['id']}">
@@ -796,22 +864,22 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                     </form>
 
                     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4 text-center">
-                        <div class="bg-slate-50 p-3 rounded-xl border border-slate-200"><span class="block text-xs text-slate-500 font-bold uppercase">Solde Initial</span><span class="text-lg font-black text-slate-800">{solde_initial_fmt} CFA</span></div>
-                        <div class="bg-emerald-50 p-3 rounded-xl border border-emerald-100"><span class="block text-xs text-emerald-600 font-bold uppercase">Cotisations Validées</span><span class="text-lg font-black text-emerald-800">{formater_montant(cotisations_caisse)} CFA</span></div>
-                        <div class="bg-red-50 p-3 rounded-xl border border-red-100"><span class="block text-xs text-red-600 font-bold uppercase">Dépenses & Aides</span><span class="text-lg font-black text-red-800">{formater_montant(total_aides_approuvees + total_dec)} CFA</span></div>
+                        <div class="bg-slate-50 p-3 rounded-xl border border-slate-200"><span class="block text-xs text-slate-500 font-bold uppercase">Solde Initial</span><span class="text-base font-extrabold text-slate-800">{solde_initial_fmt} CFA</span></div>
+                        <div class="bg-emerald-50 p-3 rounded-xl border border-emerald-100"><span class="block text-xs text-emerald-600 font-bold uppercase">Cotisations Validées</span><span class="text-base font-extrabold text-emerald-800">{formater_montant(cotisations_caisse)} CFA</span></div>
+                        <div class="bg-red-50 p-3 rounded-xl border border-red-100"><span class="block text-xs text-red-600 font-bold uppercase">Dépenses & Aides</span><span class="text-base font-extrabold text-red-800">{formater_montant(total_aides_approuvees + total_dec)} CFA</span></div>
                     </div>
-                    <div class="text-center bg-slate-900 text-white py-3 rounded-xl font-bold text-lg mb-6">Solde Réel en Caisse : <span class="text-emerald-400">{solde_fmt} CFA</span></div>
+                    <div class="text-center bg-slate-900 text-white py-3 rounded-xl font-bold text-base mb-6">Solde Réel en Caisse : <span class="text-emerald-400">{solde_fmt} CFA</span></div>
 
-                    <h3 class="text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Répartition des Dépenses</h3>
+                    <h3 class="text-xs font-bold text-slate-600 mb-2 uppercase tracking-wide">Répartition des Dépenses</h3>
                     <ul class="mb-6">{repartition_depenses_html or '<li class="text-sm text-slate-400">Aucune dépense.</li>'}</ul>
 
-                    <h3 class="text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">État des cotisations membres</h3>
+                    <h3 class="text-xs font-bold text-slate-600 mb-2 uppercase tracking-wide">État des cotisations membres</h3>
                     <ul class="max-h-60 overflow-y-auto pr-2">{suivi_retards_html}</ul>
                 </div>
 
                 <!-- TABLEAU DE SUIVI DES PAIEMENTS MOBILE MONEY (VALIDATION MANUELLE) -->
                 <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                    <h2 class="text-lg font-bold text-blue-700 mb-2 border-b pb-2">📱 Vérification & Validation des Paiements Mobile Money</h2>
+                    <h2 class="text-base font-bold text-slate-900 mb-2 border-b pb-2">📱 Vérification & Validation des Paiements Mobile Money</h2>
                     <p class="text-xs text-slate-500 mb-4">Vérifiez l'arrivée effective des fonds sur votre compte Wave ou Orange Money avant de valider pour alimenter la caisse.</p>
                     <div class="overflow-x-auto max-h-60 overflow-y-auto border border-slate-200 rounded-xl">
                         <table class="w-full text-left border-collapse bg-white">
@@ -825,7 +893,7 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
 
                 <!-- ENREGISTREMENT COTISATION / REGULARISATION -->
                 <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                    <h2 class="text-lg font-bold text-purple-600 mb-4 border-b pb-2">➕ Enregistrer une Cotisation ou Régularisation</h2>
+                    <h2 class="text-base font-bold text-slate-900 mb-4 border-b pb-2">➕ Enregistrer une Cotisation ou Régularisation</h2>
                     <form action="/cotisations-form" method="POST" class="space-y-4">
                         <input type="hidden" name="user_id" value="{user['id']}">
                         <div>
@@ -847,13 +915,13 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                                 </select>
                             </div>
                         </div>
-                        <button type="submit" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2.5 rounded-lg text-sm">Valider l'enregistrement</button>
+                        <button type="submit" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2.5 rounded-lg text-sm shadow">Valider l'enregistrement</button>
                     </form>
                 </div>
 
                 <!-- MODULE DÉCAISSEMENTS & SORTIES DE CAISSE -->
                 <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                    <h2 class="text-lg font-bold text-red-600 mb-4 border-b pb-2">💸 Enregistrer un Décaissement (Sortie d'argent)</h2>
+                    <h2 class="text-base font-bold text-slate-900 mb-4 border-b pb-2">💸 Enregistrer un Décaissement (Sortie d'argent)</h2>
                     <form action="/decaissements-form" method="POST" class="space-y-3">
                         <input type="hidden" name="user_id" value="{user['id']}">
                         <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -880,7 +948,7 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                 <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                     <div class="flex flex-col sm:flex-row justify-between items-center mb-4 border-b pb-2 gap-2">
                         <div>
-                            <h2 class="text-lg font-bold text-slate-700">👥 Annuaire des Adhérents ({len(all_adherents)})</h2>
+                            <h2 class="text-base font-bold text-slate-900">👥 Annuaire des Adhérents ({len(all_adherents)})</h2>
                         </div>
                         <div class="flex items-center gap-2">
                             <a href="/adherents/export-pdf" target="_blank" class="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow flex items-center gap-1">📄 Exporter PDF</a>
@@ -898,11 +966,11 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                 </div>
             </div>
 
-            <!-- ONGLET 3 : POINTAGE & ÉVÉNEMENTS -->
+            <!-- ONGLET 3 : PLANIFICATION & POINTAGE -->
             <div id="tab-pointage" class="tab-content hidden space-y-6">
-                <!-- MODULE PLANIFICATION ÉVÉNEMENTS -->
+                <!-- MODULE PLANIFICATION ÉVÉNEMENTS (INTÉGRÉ DANS L'ONGLET) -->
                 <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                    <h2 class="text-lg font-bold text-blue-700 mb-4 border-b pb-2">📅 Planifier un Événement ou une Réunion</h2>
+                    <h2 class="text-base font-bold text-slate-900 mb-4 border-b pb-2">📅 Planifier un Événement ou une Réunion</h2>
                     <form action="/evenements-form" method="POST" class="space-y-3">
                         <input type="hidden" name="user_id" value="{user['id']}">
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -922,7 +990,7 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                 <!-- MODULE POINTAGE & SCANNER QR CODE -->
                 <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 border-b pb-2 gap-2">
-                        <h2 class="text-lg font-bold text-teal-700">📋 Pointage & Scanner QR Code</h2>
+                        <h2 class="text-base font-bold text-slate-900">📋 Pointage & Scanner QR Code</h2>
                         <button type="button" onclick="toggleScanner()" class="bg-teal-600 hover:bg-teal-700 text-white px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow">📷 Ouvrir / Fermer le Scanner Caméra</button>
                     </div>
 
@@ -969,13 +1037,13 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
             <div id="tab-projets" class="tab-content hidden space-y-6">
                 <!-- ESPACE VALIDATION DES DEMANDES D'AIDE -->
                 <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                    <h2 class="text-lg font-bold text-amber-700 mb-4 border-b pb-2">🤝 Demandes d'Aide Communautaire (Validation)</h2>
+                    <h2 class="text-base font-bold text-slate-900 mb-4 border-b pb-2">🤝 Demandes d'Aide Communautaire (Validation)</h2>
                     <ul class="max-h-60 overflow-y-auto">{aides_admin_html or '<li class="text-sm text-slate-400">Aucune demande d\'aide en attente.</li>'}</ul>
                 </div>
 
                 <!-- MODULE GESTION DES PROJETS ADMIN -->
                 <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                    <h2 class="text-lg font-bold text-indigo-700 mb-4 border-b pb-2">🚀 Ajouter un Projet (Daara & Communauté)</h2>
+                    <h2 class="text-base font-bold text-slate-900 mb-4 border-b pb-2">🚀 Ajouter un Projet (Daara & Communauté)</h2>
                     <form action="/projets-form" method="POST" enctype="multipart/form-data" class="space-y-3 mb-6">
                         <input type="hidden" name="user_id" value="{user['id']}">
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -992,17 +1060,41 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                         <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 rounded-lg text-sm shadow">Enregistrer le projet</button>
                     </form>
 
-                    <h3 class="text-sm font-bold text-slate-700 mb-3 border-t pt-4 uppercase">Projets enregistrés</h3>
+                    <h3 class="text-xs font-bold text-slate-700 mb-3 border-t pt-4 uppercase">Projets enregistrés</h3>
                     <div class="max-h-96 overflow-y-auto">
                         {projets_cards_html or '<p class="text-xs text-slate-400">Aucun projet enregistré pour le moment.</p>'}
                     </div>
                 </div>
             </div>
 
-            <!-- ONGLET 5 : MON PROFIL -->
+            <!-- ONGLET 5 : PANORAMA VILLAGE -->
+            <div id="tab-panorama" class="tab-content hidden space-y-6">
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                    <h2 class="text-base font-bold text-slate-900 mb-4 border-b pb-2">🌍 Partager une Photo du Village (Panorama)</h2>
+                    <form action="/panorama-form" method="POST" enctype="multipart/form-data" class="space-y-3 mb-6">
+                        <input type="hidden" name="user_id" value="{user['id']}">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-600 mb-1">Légende ou Description du souvenir</label>
+                            <input type="text" name="legende" placeholder="ex: Vue de la grande mosquée du village..." required class="w-full p-2.5 text-sm border rounded-lg">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-600 mb-1">Photo souvenir</label>
+                            <input type="file" name="file_photo" accept="image/*" required class="w-full text-xs text-slate-500 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-emerald-50 file:text-emerald-700">
+                        </div>
+                        <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-lg text-sm shadow">Publier dans le Panorama</button>
+                    </form>
+
+                    <h3 class="text-xs font-bold text-slate-700 mb-3 border-t pt-4 uppercase">Galerie du Village</h3>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                        {panorama_cards_html or '<p class="col-span-3 text-xs text-slate-400">Aucune photo de panorama publiée pour le moment.</p>'}
+                    </div>
+                </div>
+            </div>
+
+            <!-- ONGLET 6 : MON PROFIL -->
             <div id="tab-profil" class="tab-content hidden space-y-6">
                 <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                    <h2 class="text-lg font-bold text-slate-700 mb-4 border-b pb-2">🖼️ Modifier ma Photo de Profil</h2>
+                    <h2 class="text-base font-bold text-slate-900 mb-4 border-b pb-2">🖼️ Modifier ma Photo de Profil</h2>
                     <form action="/modifier-photo" method="POST" enctype="multipart/form-data" class="space-y-3">
                         <input type="hidden" name="user_id" value="{user['id']}">
                         <div>
@@ -1060,7 +1152,7 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
 
             <!-- MODIFICATION DE LA PHOTO DE PROFIL -->
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
-                <h2 class="text-lg font-bold text-slate-700 mb-4 border-b pb-2">🖼️ Modifier ma Photo de Profil</h2>
+                <h2 class="text-base font-bold text-slate-900 mb-4 border-b pb-2">🖼️ Modifier ma Photo de Profil</h2>
                 <form action="/modifier-photo" method="POST" enctype="multipart/form-data" class="space-y-3">
                     <input type="hidden" name="user_id" value="{user['id']}">
                     <div>
@@ -1073,7 +1165,7 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
 
             <!-- MODULE PAIEMENT MOBILE (WAVE / ORANGE MONEY) -->
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
-                <h2 class="text-lg font-bold text-blue-700 mb-4 border-b pb-2">📱 Déclarer un Paiement Mobile (Wave / Orange Money)</h2>
+                <h2 class="text-base font-bold text-slate-900 mb-4 border-b pb-2">📱 Déclarer un Paiement Mobile (Wave / Orange Money)</h2>
                 <form action="/paiement-mobile-form" method="POST" class="space-y-3">
                     <input type="hidden" name="user_id" value="{user['id']}">
                     <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -1103,30 +1195,49 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
             </div>
 
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
-                <h2 class="text-lg font-bold text-emerald-700 mb-4 border-b pb-2">📋 Mon Suivi de Cotisations</h2>
+                <h2 class="text-base font-bold text-slate-900 mb-4 border-b pb-2">📋 Mon Suivi de Cotisations</h2>
                 <ul class="max-h-60 overflow-y-auto">{mois_payes_html or '<li class="text-sm text-slate-400">Aucun versement.</li>'}</ul>
             </div>
 
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
-                <h2 class="text-lg font-bold text-blue-700 mb-4 border-b pb-2">📅 Événements & Réunions à venir</h2>
+                <h2 class="text-base font-bold text-slate-900 mb-4 border-b pb-2">📅 Événements & Réunions à venir</h2>
                 <div class="max-h-60 overflow-y-auto">{evenements_membre_html or '<p class="text-xs text-slate-400">Aucune réunion ou événement planifié pour le moment.</p>'}</div>
             </div>
 
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
-                <h2 class="text-lg font-bold text-indigo-700 mb-4 border-b pb-2">🚀 Projets du Daara & de l'Association</h2>
+                <h2 class="text-base font-bold text-slate-900 mb-4 border-b pb-2">🚀 Projets du Daara & de l'Association</h2>
                 <div class="max-h-96 overflow-y-auto">
                     {projets_cards_html or '<p class="text-xs text-slate-400">Aucun projet enregistré pour le moment.</p>'}
                 </div>
             </div>
 
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
-                <h2 class="text-lg font-bold text-amber-600 mb-4 border-b pb-2">🤝 Demander une Aide Communautaire</h2>
+                <h2 class="text-base font-bold text-slate-900 mb-4 border-b pb-2">🤝 Demander une Aide Communautaire</h2>
                 <form action="/aides-form" method="POST" class="space-y-3">
                     <input type="hidden" name="user_id" value="{user['id']}">
                     <div><label class="block text-xs font-bold text-slate-600 mb-1">Motif de la demande</label><input type="text" name="motif" required class="w-full p-2 text-sm border rounded-lg"></div>
                     <div><label class="block text-xs font-bold text-slate-600 mb-1">Montant demandé (CFA)</label><input type="number" name="montant_demande" required class="w-full p-2 text-sm border rounded-lg"></div>
                     <button type="submit" class="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-2 rounded-lg text-sm shadow">Envoyer la demande</button>
                 </form>
+            </div>
+
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
+                <h2 class="text-base font-bold text-slate-900 mb-4 border-b pb-2">🌍 Partager & Voir le Panorama du Village</h2>
+                <form action="/panorama-form" method="POST" enctype="multipart/form-data" class="space-y-3 mb-6">
+                    <input type="hidden" name="user_id" value="{user['id']}">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">Légende de la photo</label>
+                        <input type="text" name="legende" placeholder="ex: Rencontre au bord du fleuve..." required class="w-full p-2.5 text-sm border rounded-lg">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">Photo du village</label>
+                        <input type="file" name="file_photo" accept="image/*" required class="w-full text-xs text-slate-500 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-emerald-50 file:text-emerald-700">
+                    </div>
+                    <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-lg text-sm shadow">Publier le souvenir</button>
+                </form>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {panorama_cards_html or '<p class="col-span-2 text-xs text-slate-400">Aucune photo de panorama publiée pour le moment.</p>'}
+                </div>
             </div>
             """
 
@@ -1168,13 +1279,13 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
 
                     let buttons = document.getElementsByClassName('tab-btn');
                     for (let b of buttons) {{
-                        b.classList.remove('bg-emerald-600', 'text-white', 'shadow');
-                        b.classList.add('bg-white', 'text-slate-700', 'border', 'border-slate-200');
+                        b.classList.remove('bg-slate-900', 'text-white', 'shadow-md');
+                        b.classList.add('bg-white', 'text-slate-700', 'border', 'border-slate-200', 'shadow-sm');
                     }}
                     let activeBtn = document.getElementById('btn-' + tabId);
                     if (activeBtn) {{
-                        activeBtn.classList.remove('bg-white', 'text-slate-700', 'border', 'border-slate-200');
-                        activeBtn.classList.add('bg-emerald-600', 'text-white', 'shadow');
+                        activeBtn.classList.remove('bg-white', 'text-slate-700', 'border', 'border-slate-200', 'shadow-sm');
+                        activeBtn.classList.add('bg-slate-900', 'text-white', 'shadow-md');
                     }}
                 }}
                 function openModal(id) {{ document.getElementById('modal-' + id).classList.remove('hidden'); }}
@@ -1197,7 +1308,7 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                     <div class="flex items-center gap-4">
                         {user_photo}
                         <div>
-                            <h2 class="text-lg font-bold">{user['prenom']} {user['nom']}</h2>
+                            <h2 class="text-base font-bold text-slate-900">{user['prenom']} {user['nom']}</h2>
                             <p class="text-xs text-slate-500">Rôle : <span class="font-bold text-blue-600 uppercase">{user['role']}</span></p>
                         </div>
                     </div>
@@ -1205,6 +1316,15 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                 </div>
                 {finance_sections_html}
                 {member_sections_html}
+
+                <!-- PANORAMA DU VILLAGE (FOOTER COMMUN POUR TOUTES LES VUES) -->
+                <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 mt-8">
+                    <h3 class="text-center text-base font-black text-slate-900 mb-1">🌍 Souvenirs & Panorama du Village</h3>
+                    <p class="text-center text-xs text-slate-500 mb-6">Photos et moments partagés par la communauté.</p>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                        {panorama_cards_html or '<p class="col-span-3 text-center text-xs text-slate-400">Aucune photo de panorama publiée pour le moment.</p>'}
+                    </div>
+                </div>
             </div>
         </body>
         </html>
