@@ -14,7 +14,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="40.0")
+app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="41.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -202,7 +202,7 @@ def paiement_mobile(
     user_id: int = Form(...),
     montant: float = Form(...),
     periode: str = Form(...),
-    operateur: str = Form(...), # 'Wave' ou 'Orange Money'
+    operateur: str = Form(...),
     telephone_paiement: str = Form(...)
 ):
     try:
@@ -592,6 +592,26 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
 
                 suivi_retards_html += f"<li class='py-1.5 border-b border-slate-100 flex justify-between items-center text-sm'><span><b>{a['prenom']} {a['nom']}</b> <span class='text-xs text-slate-400'>({a['secteur']})</span></span> {statut_ajour}</li>"
 
+            # SUIVI DES PAIEMENTS MOBILE MONEY POUR LE TRÉSORIER
+            paiements_mobiles_admin = [c for c in all_cotisations if "mobile_" in str(c.get('mode_paiement', ''))]
+            paiements_mobiles_rows = ""
+            for pm in paiements_mobiles_admin:
+                adh_pm = pm.get('adherents', {}) or {}
+                date_paiement_fr = formater_date(pm.get('date_paiement', ''))
+                montant_fmt = formater_montant(pm['montant'])
+                paiements_mobiles_rows += f"""
+                <tr class="hover:bg-slate-50 border-b border-slate-100 text-sm">
+                    <td class="p-2.5 font-bold text-slate-900">{adh_pm.get('prenom','')} {adh_pm.get('nom','')}</td>
+                    <td class="p-2.5 font-semibold text-blue-700 uppercase">{pm['mode_paiement'].replace('mobile_', '')}</td>
+                    <td class="p-2.5 font-bold text-emerald-700">{montant_fmt} CFA</td>
+                    <td class="p-2.5 text-slate-600">{pm['periode']}</td>
+                    <td class="p-2.5 text-slate-500 text-xs">{date_paiement_fr}</td>
+                    <td class="p-2.5 text-right">
+                        <a href="/cotisation/recu-pdf/{pm['id']}" target="_blank" class="bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1 rounded text-xs font-bold">📄 Reçu PDF</a>
+                    </td>
+                </tr>
+                """
+
             aides_admin_html = ""
             for ai in all_aides:
                 adh_aide = ai.get('adherents', {}) or {}
@@ -763,6 +783,19 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                 <ul class="max-h-60 overflow-y-auto pr-2">{suivi_retards_html}</ul>
             </div>
 
+            <!-- TABLEAU DE SUIVI DES PAIEMENTS MOBILE MONEY (POUR LE TRÉSORIER) -->
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
+                <h2 class="text-lg font-bold text-blue-700 mb-4 border-b pb-2">📱 Suivi des Paiements Mobile Money (Wave / Orange Money)</h2>
+                <div class="overflow-x-auto max-h-60 overflow-y-auto border border-slate-200 rounded-xl">
+                    <table class="w-full text-left border-collapse bg-white">
+                        <thead class="bg-slate-100 text-slate-600 text-xs uppercase sticky top-0 z-10">
+                            <tr><th class="p-2.5">Adhérent</th><th class="p-2.5">Opérateur</th><th class="p-2.5">Montant</th><th class="p-2.5">Période</th><th class="p-2.5">Date</th><th class="p-2.5 text-right">Action</th></tr>
+                        </thead>
+                        <tbody>{paiements_mobiles_rows or '<tr><td colspan="6" class="p-4 text-center text-sm text-slate-400">Aucun paiement mobile initié pour le moment.</td></tr>'}</tbody>
+                    </table>
+                </div>
+            </div>
+
             <!-- ESPACE VALIDATION DES DEMANDES D'AIDE -->
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
                 <h2 class="text-lg font-bold text-amber-700 mb-4 border-b pb-2">🤝 Demandes d'Aide Communautaire (Validation)</h2>
@@ -790,7 +823,7 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                             <select name="evenement_titre" required class="w-full p-2.5 border rounded-lg text-sm bg-white">{options_evenements_titres}</select>
                         </div>
                         <div>
-                            <label class="block text-xs font-bold text-slate-600 mb-1">Date</label>
+                            <label class="block text-xs font-bold text-slate-600 mb-1">Date (JJ-MM-AAAA)</label>
                             <input type="date" name="date_reunion" required class="w-full p-2.5 border rounded-lg text-sm bg-white">
                         </div>
                     </div>
@@ -872,7 +905,7 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                     <input type="hidden" name="user_id" value="{user['id']}">
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div><label class="block text-xs font-bold text-slate-600 mb-1">Titre de l'événement</label><input type="text" name="titre" required class="w-full p-2 text-sm border rounded-lg"></div>
-                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Date</label><input type="date" name="date_evenement" required class="w-full p-2 text-sm border rounded-lg"></div>
+                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Date (JJ-MM-AAAA)</label><input type="date" name="date_evenement" required class="w-full p-2 text-sm border rounded-lg"></div>
                     </div>
                     <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         <div><label class="block text-xs font-bold text-slate-600 mb-1">Lieu</label><input type="text" name="lieu" required class="w-full p-2 text-sm border rounded-lg"></div>
