@@ -13,7 +13,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="53.0")
+app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="54.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -73,348 +73,6 @@ async def fichier_vers_base64(file_upload: UploadFile) -> str:
         return ""
     encoded = base64.b64encode(contents).decode("utf-8")
     return f"data:image/jpeg;base64,{encoded}"
-
-@app.get("/login-form", include_in_schema=False)
-@app.get("/login-form/", include_in_schema=False)
-def login_get_redirect():
-    return RedirectResponse(url="/", status_code=303)
-
-@app.post("/login-form/")
-@app.post("/login-form")
-def login_form(telephone: str = Form(...), mot_de_passe: str = Form(...)):
-    try:
-        res = supabase.table("adherents").select("*").eq("telephone", telephone).execute()
-        users = res.data
-        if not users:
-            return HTMLResponse(content="<script>alert('Numéro de téléphone ou mot de passe incorrect.'); window.location.href='/';</script>", status_code=401)
-        
-        user = users[0]
-        if not verifier_mdp(mot_de_passe, user['mot_de_passe']):
-            return HTMLResponse(content="<script>alert('Numéro de téléphone ou mot de passe incorrect.'); window.location.href='/';</script>", status_code=401)
-
-        if user.get('statut') != 'actif':
-            return HTMLResponse(content="<script>alert('Votre compte est en attente de validation par l\\'administrateur.'); window.location.href='/';</script>", status_code=403)
-        return RedirectResponse(url=f"/dashboard?id={user['id']}", status_code=status.HTTP_303_SEE_OTHER)
-    except Exception as e:
-        return HTMLResponse(content=f"<h3>Erreur de connexion Supabase :</h3><p>{str(e)}</p><a href='/'>Retour</a>", status_code=500)
-
-@app.post("/adherents-form/")
-@app.post("/adherents-form")
-async def creer_adherent_form(
-    nom: str = Form(...), prenom: str = Form(...), telephone: str = Form(...),
-    adresse: str = Form(...), secteur: str = Form(...),
-    mot_de_passe: str = Form(...), file_photo: UploadFile = File(None)
-):
-    try:
-        existing_user = supabase.table("adherents").select("id").eq("telephone", telephone).execute()
-        if existing_user.data:
-            return HTMLResponse(content="<script>alert('Erreur : Ce numéro de téléphone est déjà associé à un compte existant. Veuillez vous connecter.'); window.location.href='/';</script>")
-
-        photo_b64 = await fichier_vers_base64(file_photo)
-        mdp_securise = hacher_mdp(mot_de_passe)
-
-        supabase.table("adherents").insert({
-            "nom": nom, "prenom": prenom, "email": f"{telephone}@tinka.local", "telephone": telephone,
-            "adresse": adresse, "secteur": secteur, "photo_profil": photo_b64, "mot_de_passe": mdp_securise
-        }).execute()
-        return HTMLResponse(content="<script>alert('Compte créé avec succès ! En attente de validation.'); window.location.href='/';</script>")
-    except Exception as e:
-        return HTMLResponse(content=f"<script>alert('Erreur lors de l\\'inscription : {str(e)}'); window.location.href='/';</script>")
-
-@app.api_route("/modifier-photo", methods=["GET", "POST"])
-async def modifier_photo(user_id: Optional[int] = Form(None), file_photo: Optional[UploadFile] = File(None)):
-    if not user_id:
-        return RedirectResponse(url="/", status_code=303)
-    try:
-        if file_photo and file_photo.filename:
-            photo_b64 = await fichier_vers_base64(file_photo)
-            supabase.table("adherents").update({"photo_profil": photo_b64}).eq("id", user_id).execute()
-    except Exception:
-        pass
-    return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
-
-@app.api_route("/admin/valider-adherent", methods=["GET", "POST"])
-def valider_adherent(user_id: Optional[int] = Form(None), adherent_id: Optional[int] = Form(None)):
-    if user_id and adherent_id:
-        supabase.table("adherents").update({"statut": "actif"}).eq("id", adherent_id).execute()
-        return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
-    return RedirectResponse(url="/", status_code=303)
-
-@app.api_route("/admin/changer-role", methods=["GET", "POST"])
-def changer_role(user_id: Optional[int] = Form(None), adherent_id: Optional[int] = Form(None), nouveau_role: Optional[str] = Form(None)):
-    if user_id and adherent_id and nouveau_role:
-        supabase.table("adherents").update({"role": nouveau_role}).eq("id", adherent_id).execute()
-        return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
-    return RedirectResponse(url="/", status_code=303)
-
-@app.api_route("/admin/modifier-adherent", methods=["GET", "POST"])
-def modifier_adherent(
-    user_id: Optional[int] = Form(None), adherent_id: Optional[int] = Form(None),
-    nom: Optional[str] = Form(None), prenom: Optional[str] = Form(None),
-    telephone: Optional[str] = Form(None), secteur: Optional[str] = Form(None)
-):
-    if not user_id or not adherent_id:
-        return RedirectResponse(url="/", status_code=303)
-    try:
-        supabase.table("adherents").update({
-            "nom": nom, "prenom": prenom, "telephone": telephone, "secteur": secteur
-        }).eq("id", adherent_id).execute()
-        return HTMLResponse(content=f"<script>alert('Informations mises à jour avec succès !'); window.location.href='/dashboard?id={user_id}';</script>")
-    except Exception as e:
-        return HTMLResponse(content=f"<script>alert('Erreur : {str(e)}'); window.location.href='/dashboard?id={user_id}';</script>")
-
-@app.api_route("/admin/reset-password", methods=["GET", "POST"])
-def reset_password(user_id: Optional[int] = Form(None), adherent_id: Optional[int] = Form(None), nouveau_mdp: Optional[str] = Form(None)):
-    if not user_id or not adherent_id or not nouveau_mdp:
-        return RedirectResponse(url="/", status_code=303)
-    mdp_securise = hacher_mdp(nouveau_mdp)
-    supabase.table("adherents").update({"mot_de_passe": mdp_securise}).eq("id", adherent_id).execute()
-    return HTMLResponse(content=f"<script>alert('Mot de passe réinitialisé et sécurisé avec succès !'); window.location.href='/dashboard?id={user_id}';</script>")
-
-@app.api_route("/admin/maj-solde-initial", methods=["GET", "POST"])
-def maj_solde_initial(user_id: Optional[int] = Form(None), solde_initial: Optional[float] = Form(None)):
-    if not user_id or solde_initial is None:
-        return RedirectResponse(url="/", status_code=303)
-    try:
-        supabase.table("parametres").update({"solde_initial": solde_initial}).eq("id", 1).execute()
-        return HTMLResponse(content=f"<script>alert('Solde initial de caisse mis à jour avec succès !'); window.location.href='/dashboard?id={user_id}';</script>")
-    except Exception as e:
-        return HTMLResponse(content=f"<script>alert('Erreur : {str(e)}'); window.location.href='/dashboard?id={user_id}';</script>")
-
-@app.api_route("/admin/valider-aide", methods=["GET", "POST"])
-def valider_aide(user_id: Optional[int] = Form(None), aide_id: Optional[int] = Form(None), statut_validation: Optional[str] = Form(None)):
-    if user_id and aide_id and statut_validation:
-        supabase.table("aides").update({"statut_validation": statut_validation}).eq("id", aide_id).execute()
-        return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
-    return RedirectResponse(url="/", status_code=303)
-
-@app.api_route("/admin/valider-paiement-mobile", methods=["GET", "POST"])
-def valider_paiement_mobile(user_id: Optional[int] = Form(None), paiement_id: Optional[int] = Form(None)):
-    if user_id and paiement_id:
-        supabase.table("cotisations").update({"statut_paiement": "valide"}).eq("id", paiement_id).execute()
-        return HTMLResponse(content=f"<script>alert('Paiement mobile vérifié et validé avec succès ! Ajouté à la caisse.'); window.location.href='/dashboard?id={user_id}';</script>")
-    return RedirectResponse(url="/", status_code=303)
-
-@app.post("/cotisations-form/")
-@app.post("/cotisations-form")
-def ajouter_cotisation(user_id: int = Form(...), adherent_id: int = Form(...), montant: float = Form(...), periode: str = Form(...), mode_paiement: str = Form(...)):
-    supabase.table("cotisations").insert({
-        "adherent_id": adherent_id, "montant": montant, "periode": periode, "mode_paiement": mode_paiement, "statut_paiement": "valide"
-    }).execute()
-    return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
-
-@app.post("/paiement-mobile-form/")
-@app.post("/paiement-mobile-form")
-def paiement_mobile(
-    user_id: int = Form(...), montant: float = Form(...), periode: str = Form(...),
-    operateur: str = Form(...), telephone_paiement: str = Form(...),
-    reference_transaction: str = Form(...), numero_recepteur: str = Form(...)
-):
-    try:
-        mode = f"mobile_{operateur.lower()} (Réf: {reference_transaction} | Vers: {numero_recepteur} | Tél: {telephone_paiement})"
-        supabase.table("cotisations").insert({
-            "adherent_id": user_id, "montant": montant, "periode": periode,
-            "mode_paiement": mode, "statut_paiement": "en_attente"
-        }).execute()
-        return HTMLResponse(content=f"<script>alert('Paiement {operateur} déclaré avec succès ! En attente de vérification par le trésorier.'); window.location.href='/dashboard?id={user_id}';</script>")
-    except Exception as e:
-        return HTMLResponse(content=f"<script>alert('Erreur lors du paiement mobile : {str(e)}'); window.location.href='/dashboard?id={user_id}';</script>")
-
-@app.post("/aides-form/")
-@app.post("/aides-form")
-def demander_aide(user_id: int = Form(...), motif: str = Form(...), montant_demande: float = Form(...)):
-    supabase.table("aides").insert({
-        "adherent_id": user_id, "motif": motif, "montant_demande": montant_demande, "statut_validation": "en_attente"
-    }).execute()
-    return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
-
-@app.post("/decaissements-form/")
-@app.post("/decaissements-form")
-def ajouter_decaissement(user_id: int = Form(...), motif: str = Form(...), montant: float = Form(...), beneficiaire: str = Form(...), categorie: str = Form(...)):
-    supabase.table("decaissements").insert({
-        "motif": motif, "montant": montant, "beneficiaire": beneficiaire, "categorie": categorie
-    }).execute()
-    return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
-
-@app.post("/projets-form/")
-@app.post("/projets-form")
-async def ajouter_projet(
-    user_id: int = Form(...), titre: str = Form(...), description: str = Form(...), 
-    objectifs: str = Form(...), cout: float = Form(...), file_projet: UploadFile = File(None), 
-    chronologie: str = Form(...), statut: str = Form(...)
-):
-    try:
-        photo_b64 = await fichier_vers_base64(file_projet)
-        supabase.table("projets").insert({
-            "titre": titre, "description": description, "objectifs": objectifs,
-            "cout": cout, "photo_projet": photo_b64, "chronologie": chronologie, "statut": statut
-        }).execute()
-    except Exception:
-        pass
-    return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
-
-@app.post("/evenements-form/")
-@app.post("/evenements-form")
-def ajouter_evenement(
-    user_id: int = Form(...), titre: str = Form(...), description: str = Form(...),
-    date_evenement: str = Form(...), lieu: str = Form(...), type_evenement: str = Form(...), statut: str = Form(...)
-):
-    supabase.table("evenements").insert({
-        "titre": titre, "description": description, "date_evenement": date_evenement,
-        "lieu": lieu, "type_evenement": type_evenement, "statut": statut
-    }).execute()
-    return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
-
-@app.post("/panorama-form/")
-@app.post("/panorama-form")
-async def ajouter_panorama(user_id: int = Form(...), legende: str = Form(...), files_photos: List[UploadFile] = File(...)):
-    try:
-        for file_photo in files_photos:
-            if file_photo and file_photo.filename:
-                photo_b64 = await fichier_vers_base64(file_photo)
-                if photo_b64:
-                    supabase.table("panorama_village").insert({
-                        "legende": legende, "photo_url": photo_b64, "auteur_id": user_id
-                    }).execute()
-    except Exception as e:
-        print(f"Erreur panorama: {e}")
-    return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
-
-@app.post("/presences-form/")
-@app.post("/presences-form")
-def enregistrer_presence(user_id: int = Form(...), adherent_id: int = Form(...), evenement_titre: str = Form(...), statut_presence: str = Form(...), date_reunion: str = Form(...)):
-    try:
-        supabase.table("presences_association").insert({
-            "adherent_id": adherent_id, "evenement_titre": evenement_titre, "statut_presence": statut_presence, "date_reunion": date_reunion
-        }).execute()
-    except Exception:
-        pass
-    return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
-
-@app.get("/adherents/export-pdf")
-def export_adherents_pdf():
-    res = supabase.table("adherents").select("*").order("nom").execute()
-    adherents = res.data or []
-
-    buffer = io.BytesIO()
-    p = canvas.Canvas(buffer, pagesize=letter)
-    width, height = letter
-
-    p.setFont("Helvetica-Bold", 14)
-    p.drawString(50, height - 40, "TINKA KA MEIN HAALDI FOTTI")
-    p.setFont("Helvetica", 9)
-    p.drawString(50, height - 55, "Annuaire Officiel des Adhérents")
-    p.line(50, height - 65, width - 50, height - 65)
-
-    p.setFont("Helvetica-Bold", 13)
-    p.drawString(50, height - 95, f"Liste Générale des Adhérents ({len(adherents)} membres)")
-
-    p.setFont("Helvetica", 10)
-    y = height - 130
-    for a in adherents:
-        nom = a.get('nom', '')
-        prenom = a.get('prenom', '')
-        secteur = a.get('secteur', '')
-        telephone = a.get('telephone', '')
-        role = a.get('role', '')
-        statut = a.get('statut', '')
-        
-        p.drawString(50, y, f"- {prenom} {nom} | Secteur: {secteur} | Tél: {telephone} | Rôle: {role} ({statut})")
-        y -= 20
-        if y < 50:
-            p.showPage()
-            y = height - 50
-
-    p.save()
-    buffer.seek(0)
-    return StreamingResponse(buffer, media_type="application/pdf", headers={"Content-Disposition": "attachment; filename=annuaire_adherents.pdf"})
-
-@app.get("/cotisations/export-pdf")
-def export_cotisations_pdf(periode: Optional[str] = Query(None)):
-    query = supabase.table("cotisations").select("*, adherents(nom, prenom, secteur)").eq("statut_paiement", "valide")
-    if periode:
-        query = query.eq("periode", periode)
-        titre_rapport = f"Tinka ka Mein Haaldi fotti - Rapport des Cotisations ({periode})"
-    else:
-        titre_rapport = "Tinka ka Mein Haaldi fotti - Rapport Global des Cotisations"
-    
-    res = query.execute()
-    cotis = res.data or []
-
-    buffer = io.BytesIO()
-    p = canvas.Canvas(buffer, pagesize=letter)
-    width, height = letter
-
-    p.setFont("Helvetica-Bold", 14)
-    p.drawString(50, height - 40, "TINKA KA MEIN HAALDI FOTTI")
-    p.setFont("Helvetica", 9)
-    p.drawString(50, height - 55, "Bureau Exécutif & Conseil - Rapport Officiel")
-    p.line(50, height - 65, width - 50, height - 65)
-
-    p.setFont("Helvetica-Bold", 13)
-    p.drawString(50, height - 95, titre_rapport)
-
-    p.setFont("Helvetica", 10)
-    y = height - 130
-    total = 0
-    for c in cotis:
-        adh = c.get('adherents', {}) or {}
-        nom = adh.get('nom', '')
-        prenom = adh.get('prenom', '')
-        secteur = adh.get('secteur', '')
-        montant_fmt = formater_montant(c['montant'])
-        p.drawString(50, y, f"- {prenom} {nom} ({secteur}) | Période: {c['periode']} | Montant: {montant_fmt} CFA ({c['mode_paiement']})")
-        total += c['montant']
-        y -= 20
-        if y < 50:
-            p.showPage()
-            y = height - 50
-
-    total_fmt = formater_montant(total)
-    p.setFont("Helvetica-Bold", 11)
-    p.drawString(50, y - 10, f"Total Général : {total_fmt} CFA")
-    p.save()
-    buffer.seek(0)
-    return StreamingResponse(buffer, media_type="application/pdf", headers={"Content-Disposition": f"attachment; filename=rapport_cotisations_{periode or 'global'}.pdf"})
-
-@app.get("/cotisation/recu-pdf/{cotisation_id}")
-def telecharger_recu_pdf(cotisation_id: int):
-    res = supabase.table("cotisations").select("*, adherents(nom, prenom, secteur, telephone)").eq("id", cotisation_id).execute()
-    if not res.data:
-        return HTMLResponse("Reçu introuvable", status_code=404)
-    
-    c = res.data[0]
-    adh = c.get('adherents', {}) or {}
-    montant_fmt = formater_montant(c['montant'])
-    date_paiement_fr = formater_date(c.get('date_paiement', ''))
-
-    buffer = io.BytesIO()
-    p = canvas.Canvas(buffer, pagesize=letter)
-    width, height = letter
-
-    p.setFont("Helvetica-Bold", 16)
-    p.drawString(50, height - 50, "TINKA KA MEIN HAALDI FOTTI")
-    p.setFont("Helvetica", 10)
-    p.drawString(50, height - 68, "Reçu Officiel de Paiement de Cotisation")
-    p.line(50, height - 80, width - 50, height - 80)
-
-    p.setFont("Helvetica-Bold", 12)
-    p.drawString(50, height - 120, f"Reçu N° : TK-{c['id']:04d}")
-    p.setFont("Helvetica", 11)
-    p.drawString(50, height - 145, f"Date de Paiement : {date_paiement_fr}")
-    p.drawString(50, height - 170, f"Membre : {adh.get('prenom','')} {adh.get('nom','')}")
-    p.drawString(50, height - 195, f"Secteur : {adh.get('secteur','')}")
-    p.drawString(50, height - 220, f"Téléphone : {adh.get('telephone','')}")
-
-    p.rect(50, height - 310, width - 100, 60, stroke=1, fill=0)
-    p.setFont("Helvetica-Bold", 14)
-    p.drawString(70, height - 265, f"Montant Versé : {montant_fmt} CFA")
-    p.setFont("Helvetica", 11)
-    p.drawString(70, height - 285, f"Période couverte : {c['periode']} | Mode de règlement : {c['mode_paiement']}")
-
-    p.save()
-    buffer.seek(0)
-    return StreamingResponse(buffer, media_type="application/pdf", headers={"Content-Disposition": f"attachment; filename=recu_cotisation_{c['id']}.pdf"})
 
 @app.get("/", response_class=HTMLResponse)
 def afficher_portail():
@@ -511,10 +169,356 @@ def afficher_portail():
         </html>
         """
     except Exception as e:
-        return HTMLResponse(content=f"<h3>Erreur critique sur le portail :</h3><p>{str(e)}</p>", status_code=500)
+        return HTMLResponse(content=f"<h3>Erreur critique :</h3><p>{str(e)}</p>", status_code=500)
 
-@app.get("/dashboard", response_class=HTMLResponse)
-def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
+@app.api_route("/login-form", methods=["GET", "POST"])
+@app.api_route("/login-form/", methods=["GET", "POST"])
+def login_form(telephone: Optional[str] = Form(None), mot_de_passe: Optional[str] = Form(None)):
+    if not telephone or not mot_de_passe:
+        return RedirectResponse(url="/", status_code=303)
+    try:
+        res = supabase.table("adherents").select("*").eq("telephone", telephone).execute()
+        users = res.data or []
+        if not users:
+            return HTMLResponse(content="<script>alert('Numéro de téléphone ou mot de passe incorrect.'); window.location.href='/';</script>", status_code=401)
+        
+        user = users[0]
+        if not verifier_mdp(mot_de_passe, user['mot_de_passe']):
+            return HTMLResponse(content="<script>alert('Numéro de téléphone ou mot de passe incorrect.'); window.location.href='/';</script>", status_code=401)
+
+        if user.get('statut') != 'actif':
+            return HTMLResponse(content="<script>alert('Votre compte est en attente de validation par l\\'administrateur.'); window.location.href='/';</script>", status_code=403)
+        return RedirectResponse(url=f"/dashboard?id={user['id']}", status_code=status.HTTP_303_SEE_OTHER)
+    except Exception as e:
+        return HTMLResponse(content=f"<h3>Erreur de connexion Supabase :</h3><p>{str(e)}</p><a href='/'>Retour</a>", status_code=500)
+
+@app.api_route("/adherents-form", methods=["GET", "POST"])
+@app.api_route("/adherents-form/", methods=["GET", "POST"])
+async def creer_adherent_form(
+    nom: Optional[str] = Form(None), prenom: Optional[str] = Form(None), telephone: Optional[str] = Form(None),
+    adresse: Optional[str] = Form(None), secteur: Optional[str] = Form(None),
+    mot_de_passe: Optional[str] = Form(None), file_photo: UploadFile = File(None)
+):
+    if not telephone:
+        return RedirectResponse(url="/", status_code=303)
+    try:
+        existing_user = supabase.table("adherents").select("id").eq("telephone", telephone).execute()
+        if existing_user.data:
+            return HTMLResponse(content="<script>alert('Erreur : Ce numéro de téléphone est déjà associé à un compte existant.'); window.location.href='/';</script>")
+
+        photo_b64 = await fichier_vers_base64(file_photo)
+        mdp_securise = hacher_mdp(mot_de_passe or "123456")
+
+        supabase.table("adherents").insert({
+            "nom": nom or "", "prenom": prenom or "", "email": f"{telephone}@tinka.local", "telephone": telephone,
+            "adresse": adresse or "", "secteur": secteur or "", "photo_profil": photo_b64, "mot_de_passe": mdp_securise
+        }).execute()
+        return HTMLResponse(content="<script>alert('Compte créé avec succès ! En attente de validation.'); window.location.href='/';</script>")
+    except Exception as e:
+        return HTMLResponse(content=f"<script>alert('Erreur lors de l\\'inscription : {str(e)}'); window.location.href='/';</script>")
+
+@app.api_route("/modifier-photo", methods=["GET", "POST"])
+async def modifier_photo(user_id: Optional[int] = Form(None), file_photo: Optional[UploadFile] = File(None)):
+    if not user_id:
+        return RedirectResponse(url="/", status_code=303)
+    try:
+        if file_photo and file_photo.filename:
+            photo_b64 = await fichier_vers_base64(file_photo)
+            supabase.table("adherents").update({"photo_profil": photo_b64}).eq("id", user_id).execute()
+    except Exception:
+        pass
+    return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
+
+@app.api_route("/admin/valider-adherent", methods=["GET", "POST"])
+def valider_adherent(user_id: Optional[int] = Form(None), adherent_id: Optional[int] = Form(None)):
+    if user_id and adherent_id:
+        supabase.table("adherents").update({"statut": "actif"}).eq("id", adherent_id).execute()
+        return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url="/", status_code=303)
+
+@app.api_route("/admin/changer-role", methods=["GET", "POST"])
+def changer_role(user_id: Optional[int] = Form(None), adherent_id: Optional[int] = Form(None), nouveau_role: Optional[str] = Form(None)):
+    if user_id and adherent_id and nouveau_role:
+        supabase.table("adherents").update({"role": nouveau_role}).eq("id", adherent_id).execute()
+        return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url="/", status_code=303)
+
+@app.api_route("/admin/modifier-adherent", methods=["GET", "POST"])
+def modifier_adherent(
+    user_id: Optional[int] = Form(None), adherent_id: Optional[int] = Form(None),
+    nom: Optional[str] = Form(None), prenom: Optional[str] = Form(None),
+    telephone: Optional[str] = Form(None), secteur: Optional[str] = Form(None)
+):
+    if not user_id or not adherent_id:
+        return RedirectResponse(url="/", status_code=303)
+    try:
+        supabase.table("adherents").update({
+            "nom": nom, "prenom": prenom, "telephone": telephone, "secteur": secteur
+        }).eq("id", adherent_id).execute()
+        return HTMLResponse(content=f"<script>alert('Informations mises à jour avec succès !'); window.location.href='/dashboard?id={user_id}';</script>")
+    except Exception as e:
+        return HTMLResponse(content=f"<script>alert('Erreur : {str(e)}'); window.location.href='/dashboard?id={user_id}';</script>")
+
+@app.api_route("/admin/reset-password", methods=["GET", "POST"])
+def reset_password(user_id: Optional[int] = Form(None), adherent_id: Optional[int] = Form(None), nouveau_mdp: Optional[str] = Form(None)):
+    if not user_id or not adherent_id or not nouveau_mdp:
+        return RedirectResponse(url="/", status_code=303)
+    mdp_securise = hacher_mdp(nouveau_mdp)
+    supabase.table("adherents").update({"mot_de_passe": mdp_securise}).eq("id", adherent_id).execute()
+    return HTMLResponse(content=f"<script>alert('Mot de passe réinitialisé et sécurisé avec succès !'); window.location.href='/dashboard?id={user_id}';</script>")
+
+@app.api_route("/admin/maj-solde-initial", methods=["GET", "POST"])
+def maj_solde_initial(user_id: Optional[int] = Form(None), solde_initial: Optional[float] = Form(None)):
+    if not user_id or solde_initial is None:
+        return RedirectResponse(url="/", status_code=303)
+    try:
+        supabase.table("parametres").update({"solde_initial": solde_initial}).eq("id", 1).execute()
+        return HTMLResponse(content=f"<script>alert('Solde initial mis à jour avec succès !'); window.location.href='/dashboard?id={user_id}';</script>")
+    except Exception as e:
+        return HTMLResponse(content=f"<script>alert('Erreur : {str(e)}'); window.location.href='/dashboard?id={user_id}';</script>")
+
+@app.api_route("/admin/valider-aide", methods=["GET", "POST"])
+def valider_aide(user_id: Optional[int] = Form(None), aide_id: Optional[int] = Form(None), statut_validation: Optional[str] = Form(None)):
+    if user_id and aide_id and statut_validation:
+        supabase.table("aides").update({"statut_validation": statut_validation}).eq("id", aide_id).execute()
+        return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url="/", status_code=303)
+
+@app.api_route("/admin/valider-paiement-mobile", methods=["GET", "POST"])
+def valider_paiement_mobile(user_id: Optional[int] = Form(None), paiement_id: Optional[int] = Form(None)):
+    if user_id and paiement_id:
+        supabase.table("cotisations").update({"statut_paiement": "valide"}).eq("id", paiement_id).execute()
+        return HTMLResponse(content=f"<script>alert('Paiement mobile validé avec succès !'); window.location.href='/dashboard?id={user_id}';</script>")
+    return RedirectResponse(url="/", status_code=303)
+
+@app.api_route("/cotisations-form", methods=["GET", "POST"])
+@app.api_route("/cotisations-form/", methods=["GET", "POST"])
+def ajouter_cotisation(user_id: Optional[int] = Form(None), adherent_id: Optional[int] = Form(None), montant: Optional[float] = Form(None), periode: Optional[str] = Form(None), mode_paiement: Optional[str] = Form(None)):
+    if user_id and adherent_id and montant is not None:
+        supabase.table("cotisations").insert({
+            "adherent_id": adherent_id, "montant": montant, "periode": periode or "", "mode_paiement": mode_paiement or "especes", "statut_paiement": "valide"
+        }).execute()
+        return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url="/", status_code=303)
+
+@app.api_route("/paiement-mobile-form", methods=["GET", "POST"])
+@app.api_route("/paiement-mobile-form/", methods=["GET", "POST"])
+def paiement_mobile(
+    user_id: Optional[int] = Form(None), montant: Optional[float] = Form(None), periode: Optional[str] = Form(None),
+    operateur: Optional[str] = Form(None), telephone_paiement: Optional[str] = Form(None),
+    reference_transaction: Optional[str] = Form(None), numero_recepteur: Optional[str] = Form(None)
+):
+    if not user_id:
+        return RedirectResponse(url="/", status_code=303)
+    try:
+        mode = f"mobile_{str(operateur).lower()} (Réf: {reference_transaction} | Vers: {numero_recepteur} | Tél: {telephone_paiement})"
+        supabase.table("cotisations").insert({
+            "adherent_id": user_id, "montant": montant or 0, "periode": periode or "",
+            "mode_paiement": mode, "statut_paiement": "en_attente"
+        }).execute()
+        return HTMLResponse(content=f"<script>alert('Paiement déclaré avec succès ! En attente de validation.'); window.location.href='/dashboard?id={user_id}';</script>")
+    except Exception as e:
+        return HTMLResponse(content=f"<script>alert('Erreur : {str(e)}'); window.location.href='/dashboard?id={user_id}';</script>")
+
+@app.api_route("/aides-form", methods=["GET", "POST"])
+@app.api_route("/aides-form/", methods=["GET", "POST"])
+def demander_aide(user_id: Optional[int] = Form(None), motif: Optional[str] = Form(None), montant_demande: Optional[float] = Form(None)):
+    if user_id:
+        supabase.table("aides").insert({
+            "adherent_id": user_id, "motif": motif or "", "montant_demande": montant_demande or 0, "statut_validation": "en_attente"
+        }).execute()
+        return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url="/", status_code=303)
+
+@app.api_route("/decaissements-form", methods=["GET", "POST"])
+@app.api_route("/decaissements-form/", methods=["GET", "POST"])
+def ajouter_decaissement(user_id: Optional[int] = Form(None), motif: Optional[str] = Form(None), montant: Optional[float] = Form(None), beneficiaire: Optional[str] = Form(None), categorie: Optional[str] = Form(None)):
+    if user_id:
+        supabase.table("decaissements").insert({
+            "motif": motif or "", "montant": montant or 0, "beneficiaire": beneficiaire or "", "categorie": categorie or "Divers"
+        }).execute()
+        return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url="/", status_code=303)
+
+@app.api_route("/projets-form", methods=["GET", "POST"])
+@app.api_route("/projets-form/", methods=["GET", "POST"])
+async def ajouter_projet(
+    user_id: Optional[int] = Form(None), titre: Optional[str] = Form(None), description: Optional[str] = Form(None), 
+    objectifs: Optional[str] = Form(None), cout: Optional[float] = Form(None), file_projet: UploadFile = File(None), 
+    chronologie: Optional[str] = Form(None), statut: Optional[str] = Form(None)
+):
+    if not user_id:
+        return RedirectResponse(url="/", status_code=303)
+    try:
+        photo_b64 = await fichier_vers_base64(file_projet)
+        supabase.table("projets").insert({
+            "titre": titre or "", "description": description or "", "objectifs": objectifs or "N/A",
+            "cout": cout or 0, "photo_projet": photo_b64, "chronologie": chronologie or "N/A", "statut": statut or "En cours"
+        }).execute()
+    except Exception:
+        pass
+    return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
+
+@app.api_route("/evenements-form", methods=["GET", "POST"])
+@app.api_route("/evenements-form/", methods=["GET", "POST"])
+def ajouter_evenement(
+    user_id: Optional[int] = Form(None), titre: Optional[str] = Form(None), description: Optional[str] = Form(None),
+    date_evenement: Optional[str] = Form(None), lieu: Optional[str] = Form(None), type_evenement: Optional[str] = Form(None), statut: Optional[str] = Form(None)
+):
+    if user_id:
+        supabase.table("evenements").insert({
+            "titre": titre or "", "description": description or "", "date_evenement": date_evenement or "",
+            "lieu": lieu or "", "type_evenement": type_evenement or "", "statut": statut or "Prevu"
+        }).execute()
+        return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url="/", status_code=303)
+
+@app.api_route("/panorama-form", methods=["GET", "POST"])
+@app.api_route("/panorama-form/", methods=["GET", "POST"])
+async def ajouter_panorama(user_id: Optional[int] = Form(None), legende: Optional[str] = Form(None), files_photos: List[UploadFile] = File([])):
+    if not user_id:
+        return RedirectResponse(url="/", status_code=303)
+    try:
+        for file_photo in files_photos:
+            if file_photo and file_photo.filename:
+                photo_b64 = await fichier_vers_base64(file_photo)
+                if photo_b64:
+                    supabase.table("panorama_village").insert({
+                        "legende": legende or "", "photo_url": photo_b64, "auteur_id": user_id
+                    }).execute()
+    except Exception as e:
+        print(f"Erreur panorama: {e}")
+    return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
+
+@app.api_route("/presences-form", methods=["GET", "POST"])
+@app.api_route("/presences-form/", methods=["GET", "POST"])
+def enregistrer_presence(user_id: Optional[int] = Form(None), adherent_id: Optional[int] = Form(None), evenement_titre: Optional[str] = Form(None), statut_presence: Optional[str] = Form(None), date_reunion: Optional[str] = Form(None)):
+    if user_id and adherent_id:
+        try:
+            supabase.table("presences_association").insert({
+                "adherent_id": adherent_id, "evenement_titre": evenement_titre or "", "statut_presence": statut_presence or "Present", "date_reunion": date_reunion or ""
+            }).execute()
+        except Exception:
+            pass
+        return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url="/", status_code=303)
+
+@app.get("/adherents/export-pdf")
+def export_adherents_pdf():
+    res = supabase.table("adherents").select("*").order("nom").execute()
+    adherents = res.data or []
+
+    buffer = io.BytesIO()
+    p = canvas.Canvas(buffer, pagesize=letter)
+    width, height = letter
+
+    p.setFont("Helvetica-Bold", 14)
+    p.drawString(50, height - 40, "TINKA KA MEIN HAALDI FOTTI")
+    p.setFont("Helvetica", 9)
+    p.drawString(50, height - 55, "Annuaire Officiel des Adhérents")
+    p.line(50, height - 65, width - 50, height - 65)
+
+    p.setFont("Helvetica-Bold", 13)
+    p.drawString(50, height - 95, f"Liste Générale des Adhérents ({len(adherents)} membres)")
+
+    p.setFont("Helvetica", 10)
+    y = height - 130
+    for a in adherents:
+        p.drawString(50, y, f"- {a.get('prenom','')} {a.get('nom','')} | Secteur: {a.get('secteur','')} | Tél: {a.get('telephone','')} | Rôle: {a.get('role','')} ({a.get('statut','')})")
+        y -= 20
+        if y < 50:
+            p.showPage()
+            y = height - 50
+
+    p.save()
+    buffer.seek(0)
+    return StreamingResponse(buffer, media_type="application/pdf", headers={"Content-Disposition": "attachment; filename=annuaire_adherents.pdf"})
+
+@app.get("/cotisations/export-pdf")
+def export_cotisations_pdf(periode: Optional[str] = Query(None)):
+    query = supabase.table("cotisations").select("*, adherents(nom, prenom, secteur)").eq("statut_paiement", "valide")
+    if periode:
+        query = query.eq("periode", periode)
+        titre_rapport = f"Tinka ka Mein Haaldi fotti - Rapport des Cotisations ({periode})"
+    else:
+        titre_rapport = "Tinka ka Mein Haaldi fotti - Rapport Global des Cotisations"
+    
+    res = query.execute()
+    cotis = res.data or []
+
+    buffer = io.BytesIO()
+    p = canvas.Canvas(buffer, pagesize=letter)
+    width, height = letter
+
+    p.setFont("Helvetica-Bold", 14)
+    p.drawString(50, height - 40, "TINKA KA MEIN HAALDI FOTTI")
+    p.setFont("Helvetica", 9)
+    p.drawString(50, height - 55, "Bureau Exécutif & Conseil - Rapport Officiel")
+    p.line(50, height - 65, width - 50, height - 65)
+
+    p.setFont("Helvetica-Bold", 13)
+    p.drawString(50, height - 95, titre_rapport)
+
+    p.setFont("Helvetica", 10)
+    y = height - 130
+    total = 0
+    for c in cotis:
+        adh = c.get('adherents', {}) or {}
+        p.drawString(50, y, f"- {adh.get('prenom','')} {adh.get('nom','')} ({adh.get('secteur','')}) | Période: {c.get('periode','')} | Montant: {formater_montant(c.get('montant',0))} CFA")
+        total += c.get('montant', 0)
+        y -= 20
+        if y < 50:
+            p.showPage()
+            y = height - 50
+
+    p.setFont("Helvetica-Bold", 11)
+    p.drawString(50, y - 10, f"Total Général : {formater_montant(total)} CFA")
+    p.save()
+    buffer.seek(0)
+    return StreamingResponse(buffer, media_type="application/pdf", headers={"Content-Disposition": f"attachment; filename=rapport_cotisations_{periode or 'global'}.pdf"})
+
+@app.get("/cotisation/recu-pdf/{cotisation_id}")
+def telecharger_recu_pdf(cotisation_id: int):
+    res = supabase.table("cotisations").select("*, adherents(nom, prenom, secteur, telephone)").eq("id", cotisation_id).execute()
+    if not res.data:
+        return HTMLResponse("Reçu introuvable", status_code=404)
+    
+    c = res.data[0]
+    adh = c.get('adherents', {}) or {}
+    montant_fmt = formater_montant(c.get('montant', 0))
+
+    buffer = io.BytesIO()
+    p = canvas.Canvas(buffer, pagesize=letter)
+    width, height = letter
+
+    p.setFont("Helvetica-Bold", 16)
+    p.drawString(50, height - 50, "TINKA KA MEIN HAALDI FOTTI")
+    p.setFont("Helvetica", 10)
+    p.drawString(50, height - 68, "Reçu Officiel de Paiement de Cotisation")
+    p.line(50, height - 80, width - 50, height - 80)
+
+    p.setFont("Helvetica-Bold", 12)
+    p.drawString(50, height - 120, f"Reçu N° : TK-{c['id']:04d}")
+    p.setFont("Helvetica", 11)
+    p.drawString(50, height - 145, f"Date de Paiement : {formater_date(c.get('date_paiement',''))}")
+    p.drawString(50, height - 170, f"Membre : {adh.get('prenom','')} {adh.get('nom','')}")
+    p.drawString(50, height - 195, f"Secteur : {adh.get('secteur','')}")
+    p.drawString(50, height - 220, f"Téléphone : {adh.get('telephone','')}")
+
+    p.rect(50, height - 310, width - 100, 60, stroke=1, fill=0)
+    p.setFont("Helvetica-Bold", 14)
+    p.drawString(70, height - 265, f"Montant Versé : {montant_fmt} CFA")
+    p.setFont("Helvetica", 11)
+    p.drawString(70, height - 285, f"Période couverte : {c.get('periode','')} | Mode : {c.get('mode_paiement','')}")
+
+    p.save()
+    buffer.seek(0)
+    return StreamingResponse(buffer, media_type="application/pdf", headers={"Content-Disposition": f"attachment; filename=recu_cotisation_{c['id']}.pdf"})
+
+@app.api_route("/dashboard", methods=["GET", "POST"])
+def afficher_dashboard(id: Optional[int] = Query(None), filtre_periode: Optional[str] = Query(None)):
+    if not id:
+        return RedirectResponse(url="/", status_code=303)
     try:
         user_res = supabase.table("adherents").select("*").eq("id", id).execute()
         if not user_res.data:
@@ -593,7 +597,7 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
 
         finance_sections_html = ""
         if is_tresorier:
-            options_adherents = "".join([f"<option value='{a['id']}' data-text='{a.get('prenom','').lower()} {a.get('nom','').lower()} {a.get('secteur','').lower()} {a.get('telephone','')}' >{a.get('prenom','')} {a.get('nom','')} — Secteur: {a.get('secteur','')} (Tél: {a.get('telephone','')})</option>" for a in all_actifs if a.get('role') != 'admin'])
+            options_adherents = "".join([f"<option value='{a['id']}'>{a.get('prenom','')} {a.get('nom','')} — Secteur: {a.get('secteur','')} (Tél: {a.get('telephone','')})</option>" for a in all_actifs if a.get('role') != 'admin'])
             
             suivi_retards_html = ""
             for a in all_actifs:
@@ -606,29 +610,22 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
             paiements_mobiles_rows = ""
             for pm in paiements_mobiles_admin:
                 adh_pm = pm.get('adherents', {}) or {}
-                date_paiement_fr = formater_date(pm.get('date_paiement', ''))
-                montant_fmt = formater_montant(pm.get('montant', 0))
-                mode_str = pm.get('mode_paiement', '')
                 st_paiement = pm.get('statut_paiement', 'en_attente')
-
                 action_cell = f"""
                 <form action="/admin/valider-paiement-mobile" method="POST" class="inline">
-                    <input type="hidden" name="user_id" value="{user['id']}">
-                    <input type="hidden" name="paiement_id" value="{pm['id']}">
-                    <button type="submit" class="bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow">⏳ Vérifier & Valider</button>
+                    <input type="hidden" name="user_id" value="{user['id']}"><input type="hidden" name="paiement_id" value="{pm['id']}">
+                    <button type="submit" class="bg-amber-600 text-white px-3 py-1.5 rounded text-xs font-bold shadow">⏳ Valider</button>
                 </form>
                 """ if st_paiement != 'valide' else f"""
-                <span class="text-xs font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full mr-2">Validé & Reçu</span>
-                <a href="/cotisation/recu-pdf/{pm['id']}" target="_blank" class="bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1 rounded text-xs font-bold">📄 Reçu PDF</a>
+                <span class="text-xs font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full mr-2">Validé</span>
+                <a href="/cotisation/recu-pdf/{pm['id']}" target="_blank" class="bg-blue-600 text-white px-2.5 py-1 rounded text-xs font-bold">📄 PDF</a>
                 """
-
                 paiements_mobiles_rows += f"""
-                <tr class="hover:bg-slate-50 border-b border-slate-100 text-sm">
-                    <td class="p-2.5 font-bold text-slate-900">{adh_pm.get('prenom','')} {adh_pm.get('nom','')}</td>
-                    <td class="p-2.5 font-semibold text-blue-700 uppercase">{mode_str}</td>
-                    <td class="p-2.5 font-bold text-emerald-700">{montant_fmt} CFA</td>
+                <tr class="hover:bg-slate-50 border-b text-sm">
+                    <td class="p-2.5 font-bold">{adh_pm.get('prenom','')} {adh_pm.get('nom','')}</td>
+                    <td class="p-2.5 font-semibold text-blue-700 uppercase">{pm.get('mode_paiement','')}</td>
+                    <td class="p-2.5 font-bold text-emerald-700">{formater_montant(pm.get('montant',0))} CFA</td>
                     <td class="p-2.5 text-slate-600">{pm.get('periode','')}</td>
-                    <td class="p-2.5 text-slate-500 text-xs">{date_paiement_fr}</td>
                     <td class="p-2.5 text-right">{action_cell}</td>
                 </tr>
                 """
@@ -638,29 +635,10 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                 adh_aide = ai.get('adherents', {}) or {}
                 st_aide = ai.get('statut_validation', 'en_attente')
                 actions_aide = f"""
-                <form action="/admin/valider-aide" method="POST" class="inline-block">
-                    <input type="hidden" name="user_id" value="{user['id']}"><input type="hidden" name="aide_id" value="{ai['id']}"><input type="hidden" name="statut_validation" value="approuve">
-                    <button type="submit" class="bg-emerald-600 text-white px-2.5 py-1 rounded text-xs font-bold mr-1">Approuver</button>
-                </form>
-                <form action="/admin/valider-aide" method="POST" class="inline-block">
-                    <input type="hidden" name="user_id" value="{user['id']}"><input type="hidden" name="aide_id" value="{ai['id']}"><input type="hidden" name="statut_validation" value="refuse">
-                    <button type="submit" class="bg-red-600 text-white px-2.5 py-1 rounded text-xs font-bold">Refuser</button>
-                </form>
-                """ if st_aide == 'en_attente' else f"<span class='text-xs font-bold px-2.5 py-1 rounded-full bg-slate-100 text-slate-700'>{st_aide.upper()}</span>"
-
-                aides_admin_html += f"""
-                <li class="py-2.5 border-b border-slate-100 flex justify-between items-center text-sm">
-                    <div><b>{adh_aide.get('prenom','')} {adh_aide.get('nom','')}</b> — Motif : {ai.get('motif','')} <span class="font-bold text-amber-700">({formater_montant(ai.get('montant_demande', 0))} CFA)</span></div>
-                    <div>{actions_aide}</div>
-                </li>
-                """
-
-            categories_dict = {}
-            for d in all_decaissements:
-                cat = d.get('categorie', 'Divers') or 'Divers'
-                categories_dict[cat] = categories_dict.get(cat, 0) + d.get('montant', 0)
-            
-            repartition_depenses_html = "".join([f"<li class='flex justify-between py-1 text-sm border-b border-slate-100'><span>{cat}</span><span class='font-bold text-red-600'>{formater_montant(montant_cat)} CFA</span></li>" for cat, montant_cat in categories_dict.items()])
+                <form action="/admin/valider-aide" method="POST" class="inline-block"><input type="hidden" name="user_id" value="{user['id']}"><input type="hidden" name="aide_id" value="{ai['id']}"><input type="hidden" name="statut_validation" value="approuve"><button type="submit" class="bg-emerald-600 text-white px-2 py-1 rounded text-xs font-bold mr-1">Approuver</button></form>
+                <form action="/admin/valider-aide" method="POST" class="inline-block"><input type="hidden" name="user_id" value="{user['id']}"><input type="hidden" name="aide_id" value="{ai['id']}"><input type="hidden" name="statut_validation" value="refuse"><button type="submit" class="bg-red-600 text-white px-2 py-1 rounded text-xs font-bold">Refuser</button></form>
+                """ if st_aide == 'en_attente' else f"<span class='text-xs font-bold px-2 py-1 rounded-full bg-slate-100'>{st_aide.upper()}</span>"
+                aides_admin_html += f"<li class='py-2 border-b flex justify-between items-center text-sm'><div><b>{adh_aide.get('prenom','')} {adh_aide.get('nom','')}</b> — {ai.get('motif','')} <span class='text-amber-700 font-bold'>({formater_montant(ai.get('montant_demande',0))} CFA)</span></div><div>{actions_aide}</div></li>"
 
             adherents_table_rows = ""
             modals_html = ""
@@ -668,11 +646,8 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                 actions_admin = ""
                 if a.get('statut') == 'en_attente':
                     actions_admin += f"""
-                    <form action="/admin/valider-adherent" method="POST" class="inline">
-                        <input type="hidden" name="user_id" value="{user['id']}"><input type="hidden" name="adherent_id" value="{a['id']}">
-                        <button type="submit" class="bg-emerald-600 text-white px-2 py-1 rounded text-xs font-bold">Valider</button>
-                    </form>"""
-                
+                    <form action="/admin/valider-adherent" method="POST" class="inline"><input type="hidden" name="user_id" value="{user['id']}"><input type="hidden" name="adherent_id" value="{a['id']}"><button type="submit" class="bg-emerald-600 text-white px-2 py-1 rounded text-xs font-bold">Valider</button></form>
+                    """
                 if is_admin:
                     actions_admin += f"""
                     <form action="/admin/changer-role" method="POST" class="inline-block ml-1">
@@ -688,13 +663,12 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                 photo_tag = f"<img src='{a['photo_profil']}' class='w-7 h-7 rounded-full object-cover mr-2' onerror='this.style.display=\"none\"'>" if a.get('photo_profil') else f"<div class='w-7 h-7 rounded-full bg-slate-200 flex items-center justify-center font-bold text-slate-500 text-[10px] mr-2'>{a.get('prenom','M')[0]}</div>"
                 
                 adherents_table_rows += f"""
-                <tr class="adherent-row hover:bg-slate-50 border-b border-slate-100 text-sm" data-search="{a.get('prenom','').lower()} {a.get('nom','').lower()} {a.get('telephone','')}">
-                    <td class="p-2.5 flex items-center font-medium text-slate-900">{photo_tag}{a.get('prenom','')} {a.get('nom','')}</td>
-                    <td class="p-2.5 text-slate-600"><span class="text-xs bg-slate-100 px-2 py-0.5 rounded font-semibold uppercase">{a.get('role','')}</span></td>
-                    <td class="p-2.5 text-slate-600">{a.get('secteur','')}</td>
-                    <td class="p-2.5 text-slate-600 font-mono text-xs">{a.get('telephone','')}</td>
-                    <td class="p-2.5 text-slate-600"><span class="text-xs font-bold text-slate-500">{a.get('statut','')}</span></td>
-                    <td class="p-2.5 text-right space-x-1">{actions_admin}<button onclick="openModal({a['id']})" class="bg-blue-50 text-blue-700 px-2.5 py-1 rounded text-xs font-bold">⚙️ Modifier</button></td>
+                <tr class="hover:bg-slate-50 border-b text-sm">
+                    <td class="p-2.5 flex items-center font-medium">{photo_tag}{a.get('prenom','')} {a.get('nom','')}</td>
+                    <td class="p-2.5"><span class="text-xs bg-slate-100 px-2 py-0.5 rounded uppercase">{a.get('role','')}</span></td>
+                    <td class="p-2.5">{a.get('secteur','')}</td>
+                    <td class="p-2.5 font-mono text-xs">{a.get('telephone','')}</td>
+                    <td class="p-2.5 text-right">{actions_admin}<button onclick="openModal({a['id']})" class="bg-blue-50 text-blue-700 px-2 py-1 rounded text-xs font-bold ml-1">⚙️</button></td>
                 </tr>
                 """
 
@@ -718,29 +692,18 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                 </div>
                 """
 
-            presences_table_rows = ""
-            for p in all_presences:
-                adh = p.get('adherents', {}) or {}
-                presences_table_rows += f"""
-                <tr class="border-b text-sm">
-                    <td class="p-2.5 font-bold">{adh.get('prenom','')} {adh.get('nom','')}</td>
-                    <td class="p-2.5">{p.get('evenement_titre','')}</td>
-                    <td class="p-2.5">{formater_date(p.get('date_reunion',''))}</td>
-                    <td class="p-2.5"><span class="text-xs px-2 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-800">{p.get('statut_presence','')}</span></td>
-                </tr>
-                """
-
+            presences_table_rows = "".join([f"<tr class='border-b text-sm'><td class='p-2.5 font-bold'>{p.get('adherents',{}).get('prenom','')} {p.get('adherents',{}).get('nom','')}</td><td class='p-2.5'>{p.get('evenement_titre','')}</td><td class='p-2.5'>{formater_date(p.get('date_reunion',''))}</td><td class='p-2.5'><span class='text-xs px-2 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-800'>{p.get('statut_presence','')}</span></td></tr>" for p in all_presences])
             options_presence_adherents = "".join([f"<option value='{a['id']}'>{a.get('prenom','')} {a.get('nom','')} — {a.get('secteur','')}</option>" for a in all_actifs])
             options_evenements_titres = "".join([f"<option value='{ev.get('titre','')}'>{ev.get('titre','')}</option>" for ev in all_evenements]) or "<option value='Réunion Générale'>Réunion Générale</option>"
 
             finance_sections_html = f"""
             <div class="flex flex-wrap gap-2 mb-6 border-b pb-3">
-                <button onclick="switchTab('tab-tresorerie')" id="btn-tab-tresorerie" class="tab-btn px-4 py-2 text-xs font-bold rounded-xl bg-slate-900 text-white shadow-md">💼 Trésorerie & Caisse</button>
-                <button onclick="switchTab('tab-adherents')" id="btn-tab-adherents" class="tab-btn px-4 py-2 text-xs font-bold rounded-xl bg-white text-slate-700 border shadow-sm">👥 Annuaire & Membres</button>
+                <button onclick="switchTab('tab-tresorerie')" id="btn-tab-tresorerie" class="tab-btn px-4 py-2 text-xs font-bold rounded-xl bg-slate-900 text-white shadow-md">💼 Trésorerie</button>
+                <button onclick="switchTab('tab-adherents')" id="btn-tab-adherents" class="tab-btn px-4 py-2 text-xs font-bold rounded-xl bg-white text-slate-700 border shadow-sm">👥 Annuaire</button>
                 <button onclick="switchTab('tab-pointage')" id="btn-tab-pointage" class="tab-btn px-4 py-2 text-xs font-bold rounded-xl bg-white text-slate-700 border shadow-sm">📋 Pointage</button>
-                <button onclick="switchTab('tab-projets')" id="btn-tab-projets" class="tab-btn px-4 py-2 text-xs font-bold rounded-xl bg-white text-slate-700 border shadow-sm">🚀 Projets & Aides</button>
-                <button onclick="switchTab('tab-panorama')" id="btn-tab-panorama" class="tab-btn px-4 py-2 text-xs font-bold rounded-xl bg-white text-slate-700 border shadow-sm">🌍 Panorama Village</button>
-                <button onclick="switchTab('tab-profil')" id="btn-tab-profil" class="tab-btn px-4 py-2 text-xs font-bold rounded-xl bg-white text-slate-700 border shadow-sm">🖼️ Mon Profil</button>
+                <button onclick="switchTab('tab-projets')" id="btn-tab-projets" class="tab-btn px-4 py-2 text-xs font-bold rounded-xl bg-white text-slate-700 border shadow-sm">🚀 Projets</button>
+                <button onclick="switchTab('tab-panorama')" id="btn-tab-panorama" class="tab-btn px-4 py-2 text-xs font-bold rounded-xl bg-white text-slate-700 border shadow-sm">🌍 Panorama</button>
+                <button onclick="switchTab('tab-profil')" id="btn-tab-profil" class="tab-btn px-4 py-2 text-xs font-bold rounded-xl bg-white text-slate-700 border shadow-sm">🖼️ Profil</button>
             </div>
 
             <!-- ONGLET 1 -->
@@ -757,9 +720,9 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                     <ul class="max-h-60 overflow-y-auto">{suivi_retards_html}</ul>
                 </div>
                 <div class="bg-white p-6 rounded-2xl shadow-sm border">
-                    <h2 class="text-base font-bold mb-2 border-b pb-2">📱 Validation des Paiements Mobile Money</h2>
+                    <h2 class="text-base font-bold mb-2 border-b pb-2">📱 Paiements Mobile Money</h2>
                     <div class="overflow-x-auto max-h-60 overflow-y-auto border rounded-xl">
-                        <table class="w-full text-left bg-white"><thead class="bg-slate-100 text-xs uppercase"><tr><th class="p-2.5">Adhérent</th><th class="p-2.5">Détails</th><th class="p-2.5">Montant</th><th class="p-2.5">Période</th><th class="p-2.5 text-right">Action</th></tr></thead><tbody>{paiements_mobiles_rows or '<tr><td colspan="5" class="p-4 text-center text-sm text-slate-400">Aucun paiement mobile en attente.</td></tr>'}</tbody></table>
+                        <table class="w-full text-left bg-white"><thead class="bg-slate-100 text-xs uppercase"><tr><th class="p-2.5">Adhérent</th><th class="p-2.5">Détails</th><th class="p-2.5">Montant</th><th class="p-2.5">Période</th><th class="p-2.5 text-right">Action</th></tr></thead><tbody>{paiements_mobiles_rows or '<tr><td colspan="5" class="p-4 text-center text-sm text-slate-400">Aucun paiement.</td></tr>'}</tbody></table>
                     </div>
                 </div>
             </div>
@@ -775,7 +738,7 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
             <!-- ONGLET 3 -->
             <div id="tab-pointage" class="tab-content hidden space-y-6">
                 <div class="bg-white p-6 rounded-2xl shadow-sm border">
-                    <h2 class="text-base font-bold mb-4 border-b pb-2">📋 Pointage des Présences</h2>
+                    <h2 class="text-base font-bold mb-4 border-b pb-2">📋 Pointage</h2>
                     <form action="/presences-form" method="POST" class="space-y-4">
                         <input type="hidden" name="user_id" value="{user['id']}">
                         <div class="grid grid-cols-2 gap-3">
@@ -783,7 +746,7 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                             <div><label class="block text-xs font-bold mb-1">Date</label><input type="date" name="date_reunion" required class="w-full p-2.5 border rounded bg-white"></div>
                         </div>
                         <div><label class="block text-xs font-bold mb-1">Membre</label><select name="adherent_id" required class="w-full p-2.5 border rounded bg-white" size="4">{options_presence_adherents}</select></div>
-                        <div><label class="block text-xs font-bold mb-1">Statut</label><select name="statut_presence" required class="w-full p-2.5 border rounded bg-white"><option value="Present">🟢 Présent(e)</option><option value="Absent_excuse">🟡 Exclus(e)</option></select></div>
+                        <div><label class="block text-xs font-bold mb-1">Statut</label><select name="statut_presence" required class="w-full p-2.5 border rounded bg-white"><option value="Present">🟢 Présent(e)</option><option value="Absent_excuse">🟡 Excusé(e)</option></select></div>
                         <button type="submit" class="w-full bg-teal-600 text-white font-bold py-2.5 rounded text-sm shadow">Enregistrer</button>
                     </form>
                 </div>
@@ -804,9 +767,8 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                             <div><label class="block text-xs font-bold mb-1">Coût (CFA)</label><input type="number" name="cout" required class="w-full p-2 border rounded"></div>
                         </div>
                         <div><label class="block text-xs font-bold mb-1">Description</label><textarea name="description" rows="2" required class="w-full p-2 border rounded"></textarea></div>
-                        <input type="hidden" name="objectifs" value="N/A"><input type="hidden" name="chronologie" value="N/A"><input type="hidden" name="statut" value="En cours">
-                        <div><label class="block text-xs font-bold mb-1">Photo du projet</label><input type="file" name="file_projet" accept="image/*" class="w-full text-xs"></div>
-                        <button type="submit" class="w-full bg-indigo-600 text-white font-bold py-2 rounded text-sm shadow">Ajouter le projet</button>
+                        <div><label class="block text-xs font-bold mb-1">Photo</label><input type="file" name="file_projet" accept="image/*" class="w-full text-xs"></div>
+                        <button type="submit" class="w-full bg-indigo-600 text-white font-bold py-2 rounded text-sm shadow">Ajouter</button>
                     </form>
                     <div class="max-h-96 overflow-y-auto">{projets_cards_html or '<p class="text-xs text-slate-400">Aucun projet.</p>'}</div>
                 </div>
@@ -828,10 +790,10 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
             <!-- ONGLET 6 -->
             <div id="tab-profil" class="tab-content hidden space-y-6">
                 <div class="bg-white p-6 rounded-2xl shadow-sm border">
-                    <h2 class="text-base font-bold mb-4 border-b pb-2">🖼️ Ma Photo de Profil</h2>
+                    <h2 class="text-base font-bold mb-4 border-b pb-2">🖼️ Mon Profil</h2>
                     <form action="/modifier-photo" method="POST" enctype="multipart/form-data" class="space-y-3">
                         <input type="hidden" name="user_id" value="{user['id']}">
-                        <div><input type="file" name="file_photo" accept="image/*" required class="w-full text-xs"></div>
+                        <input type="file" name="file_photo" accept="image/*" required class="w-full text-xs">
                         <button type="submit" class="w-full bg-slate-800 text-white font-bold py-2 rounded text-sm shadow">Mettre à jour</button>
                     </form>
                 </div>
@@ -843,7 +805,7 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
         member_sections_html = ""
         if not is_tresorier:
             cotis_perso = [c for c in all_cotisations if c.get('adherent_id') == user['id']]
-            mois_payes_html = "".join([f"<li class='py-2 border-b text-sm flex justify-between'><span>Mois de <b>{c.get('periode','')}</b> : Payé ({formater_montant(c.get('montant',0))} CFA)</span><a href='/cotisation/recu-pdf/{c['id']}' target='_blank' class='bg-blue-600 text-white px-2 py-0.5 rounded text-xs font-semibold'>Reçu PDF</a></li>" for c in cotis_perso if c.get('statut_paiement') == 'valide'])
+            mois_payes_html = "".join([f"<li class='py-2 border-b text-sm flex justify-between'><span>Mois de <b>{c.get('periode','')}</b> : Payé ({formater_montant(c.get('montant',0))} CFA)</span><a href='/cotisation/recu-pdf/{c['id']}' target='_blank' class='bg-blue-600 text-white px-2 py-0.5 rounded text-xs font-semibold'>PDF</a></li>" for c in cotis_perso if c.get('statut_paiement') == 'valide'])
             
             member_sections_html = f"""
             <div class="bg-gradient-to-br from-slate-900 to-emerald-950 text-white p-6 rounded-3xl shadow-xl mb-6">
@@ -852,7 +814,7 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                 <div class="bg-white p-2 rounded-xl inline-block mt-4"><img src="data:image/png;base64,{qr_perso_b64}" class="w-20 h-20 rounded"></div>
             </div>
             <div class="bg-white p-6 rounded-2xl shadow-sm border mb-6">
-                <h2 class="text-base font-bold mb-4 border-b pb-2">🖼️ Modifier ma Photo de Profil</h2>
+                <h2 class="text-base font-bold mb-4 border-b pb-2">🖼️ Ma Photo de Profil</h2>
                 <form action="/modifier-photo" method="POST" enctype="multipart/form-data" class="space-y-3">
                     <input type="hidden" name="user_id" value="{user['id']}">
                     <input type="file" name="file_photo" accept="image/*" required class="w-full text-xs">
@@ -877,7 +839,7 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                 </form>
             </div>
             <div class="bg-white p-6 rounded-2xl shadow-sm border mb-6">
-                <h2 class="text-base font-bold mb-4 border-b pb-2">📋 Mes Cotisations Validées</h2>
+                <h2 class="text-base font-bold mb-4 border-b pb-2">📋 Mes Cotisations</h2>
                 <ul class="max-h-60 overflow-y-auto">{mois_payes_html or '<p class="text-sm text-slate-400">Aucun versement validé.</p>'}</ul>
             </div>
             """
@@ -927,7 +889,7 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
         </html>
         """
     except Exception as e:
-        return HTMLResponse(content=f"<h3>Erreur critique sur le Dashboard :</h3><p>{str(e)}</p><a href='/'>Retour au portail</a>", status_code=500)
+        return HTMLResponse(content=f"<h3>Erreur critique sur le Dashboard :</h3><p>{str(e)}</p><a href='/'>Retour</a>", status_code=500)
 
 if __name__ == "__main__":
     import uvicorn
