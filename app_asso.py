@@ -14,7 +14,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="43.0")
+app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="44.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -188,11 +188,19 @@ def valider_aide(user_id: Optional[int] = Form(None), aide_id: Optional[int] = F
         return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
     return RedirectResponse(url="/", status_code=303)
 
+@app.api_route("/admin/valider-paiement-mobile", methods=["GET", "POST"])
+def valider_paiement_mobile(user_id: Optional[int] = Form(None), paiement_id: Optional[int] = Form(None)):
+    if user_id and paiement_id:
+        # Met à jour le statut du paiement mobile à 'valide'
+        supabase.table("cotisations").update({"statut_paiement": "valide"}).eq("id", paiement_id).execute()
+        return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url="/", status_code=303)
+
 @app.post("/cotisations-form/")
 @app.post("/cotisations-form")
 def ajouter_cotisation(user_id: int = Form(...), adherent_id: int = Form(...), montant: float = Form(...), periode: str = Form(...), mode_paiement: str = Form(...)):
     supabase.table("cotisations").insert({
-        "adherent_id": adherent_id, "montant": montant, "periode": periode, "mode_paiement": mode_paiement
+        "adherent_id": adherent_id, "montant": montant, "periode": periode, "mode_paiement": mode_paiement, "statut_paiement": "valide"
     }).execute()
     return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
 
@@ -213,9 +221,10 @@ def paiement_mobile(
             "adherent_id": user_id,
             "montant": montant,
             "periode": periode,
-            "mode_paiement": mode
+            "mode_paiement": mode,
+            "statut_paiement": "en_attente"
         }).execute()
-        return HTMLResponse(content=f"<script>alert('Paiement {operateur} enregistré avec la référence {reference_transaction} !'); window.location.href='/dashboard?id={user_id}';</script>")
+        return HTMLResponse(content=f"<script>alert('Paiement {operateur} déclaré avec succès ! En attente de validation par le trésorier.'); window.location.href='/dashboard?id={user_id}';</script>")
     except Exception as e:
         return HTMLResponse(content=f"<script>alert('Erreur lors du paiement mobile : {str(e)}'); window.location.href='/dashboard?id={user_id}';</script>")
 
@@ -549,7 +558,7 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
         param_res = supabase.table("parametres").select("solde_initial").eq("id", 1).execute()
         solde_initial = param_res.data[0]['solde_initial'] if param_res.data else 0.0
 
-        cotisations_caisse = sum([c['montant'] for c in all_cotisations if "regularisation" not in str(c.get('mode_paiement', ''))])
+        cotisations_caisse = sum([c['montant'] for c in all_cotisations if "regularisation" not in str(c.get('mode_paiement', '')) and c.get('statut_paiement', 'valide') == 'valide'])
         total_aides_approuvees = sum([ai['montant_demande'] for ai in all_aides if ai['statut_validation'] == 'approuve'])
         total_dec = sum([d['montant'] for d in all_decaissements])
         
@@ -583,7 +592,7 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
             
             suivi_retards_html = ""
             for a in all_actifs:
-                cotis_membre = [c['periode'] for c in all_cotisations if c['adherent_id'] == a['id']]
+                cotis_membre = [c['periode'] for c in all_cotisations if c['adherent_id'] == a['id'] and c.get('statut_paiement', 'valide') == 'valide']
                 mois_manquants = [m for m in mois_12 if m not in cotis_membre]
                 
                 if not mois_manquants:
@@ -601,6 +610,22 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                 date_paiement_fr = formater_date(pm.get('date_paiement', ''))
                 montant_fmt = formater_montant(pm['montant'])
                 mode_str = pm.get('mode_paiement', '')
+                st_paiement = pm.get('statut_paiement', 'valide')
+
+                if st_paiement == 'en_attente':
+                    action_cell = f"""
+                    <form action="/admin/valider-paiement-mobile" method="POST" class="inline">
+                        <input type="hidden" name="user_id" value="{user['id']}">
+                        <input type="hidden" name="paiement_id" value="{pm['id']}">
+                        <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 rounded text-xs font-bold shadow">✅ Valider & Enregistrer</button>
+                    </form>
+                    """
+                else:
+                    action_cell = f"""
+                    <span class="text-xs font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full mr-2">Validé</span>
+                    <a href="/cotisation/recu-pdf/{pm['id']}" target="_blank" class="bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1 rounded text-xs font-bold">📄 Reçu PDF</a>
+                    """
+
                 paiements_mobiles_rows += f"""
                 <tr class="hover:bg-slate-50 border-b border-slate-100 text-sm">
                     <td class="p-2.5 font-bold text-slate-900">{adh_pm.get('prenom','')} {adh_pm.get('nom','')}</td>
@@ -608,9 +633,7 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                     <td class="p-2.5 font-bold text-emerald-700">{montant_fmt} CFA</td>
                     <td class="p-2.5 text-slate-600">{pm['periode']}</td>
                     <td class="p-2.5 text-slate-500 text-xs">{date_paiement_fr}</td>
-                    <td class="p-2.5 text-right">
-                        <a href="/cotisation/recu-pdf/{pm['id']}" target="_blank" class="bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1 rounded text-xs font-bold">📄 Reçu PDF</a>
-                    </td>
+                    <td class="p-2.5 text-right">{action_cell}</td>
                 </tr>
                 """
 
@@ -785,13 +808,14 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                 <ul class="max-h-60 overflow-y-auto pr-2">{suivi_retards_html}</ul>
             </div>
 
-            <!-- TABLEAU DE SUIVI DES PAIEMENTS MOBILE MONEY (TRÉSORIER) -->
+            <!-- TABLEAU DE SUIVI DES PAIEMENTS MOBILE MONEY (AVEC BOUTON DE VALIDATION DIRECT) -->
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
-                <h2 class="text-lg font-bold text-blue-700 mb-4 border-b pb-2">📱 Suivi des Paiements Mobile Money (Wave / Orange Money)</h2>
+                <h2 class="text-lg font-bold text-blue-700 mb-2 border-b pb-2">📱 Suivi & Validation des Paiements Mobile Money</h2>
+                <p class="text-xs text-slate-500 mb-4">Validez les paiements reçus sur vos numéros pour les intégrer à la caisse et générer les reçus PDF.</p>
                 <div class="overflow-x-auto max-h-60 overflow-y-auto border border-slate-200 rounded-xl">
                     <table class="w-full text-left border-collapse bg-white">
                         <thead class="bg-slate-100 text-slate-600 text-xs uppercase sticky top-0 z-10">
-                            <tr><th class="p-2.5">Adhérent</th><th class="p-2.5">Détails & Référence</th><th class="p-2.5">Montant</th><th class="p-2.5">Période</th><th class="p-2.5">Date</th><th class="p-2.5 text-right">Action</th></tr>
+                            <tr><th class="p-2.5">Adhérent</th><th class="p-2.5">Détails & Référence</th><th class="p-2.5">Montant</th><th class="p-2.5">Période</th><th class="p-2.5">Date</th><th class="p-2.5 text-right">Actions / Validation</th></tr>
                         </thead>
                         <tbody>{paiements_mobiles_rows or '<tr><td colspan="6" class="p-4 text-center text-sm text-slate-400">Aucun paiement mobile initié pour le moment.</td></tr>'}</tbody>
                     </table>
@@ -1006,7 +1030,7 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                 </form>
             </div>
 
-            <!-- MODULE PAIEMENT MOBILE (WAVE / ORANGE MONEY) CORRIGÉ -->
+            <!-- MODULE PAIEMENT MOBILE (WAVE / ORANGE MONEY) -->
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
                 <h2 class="text-lg font-bold text-blue-700 mb-4 border-b pb-2">📱 Déclarer un Paiement Mobile (Wave / Orange Money)</h2>
                 <form action="/paiement-mobile-form" method="POST" class="space-y-3">
