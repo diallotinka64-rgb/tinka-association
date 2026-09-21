@@ -13,7 +13,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="51.0")
+app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="52.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -280,13 +280,16 @@ async def ajouter_panorama(user_id: int = Form(...), legende: str = Form(...), f
             if file_photo and file_photo.filename:
                 photo_b64 = await fichier_vers_base64(file_photo)
                 if photo_b64:
-                    supabase.table("panorama_village").insert({
+                    # Insertion avec gestion d'erreur explicite pour voir si Supabase bloque l'insertion
+                    res = supabase.table("panorama_village").insert({
                         "legende": legende, "photo_url": photo_b64, "auteur_id": user_id
                     }).execute()
 
         return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
     except Exception as e:
-        return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
+        # En cas d'erreur, on renvoie une alerte avec le détail de l'erreur pour comprendre pourquoi l'image refuse de s'enregistrer
+        err_msg = str(e).replace('"', "'").replace('\n', ' ')
+        return HTMLResponse(content=f"<script>alert('Erreur lors de l\\'ajout de la photo au panorama : {err_msg}'); window.location.href='/dashboard?id={user_id}';</script>")
 
 @app.post("/presences-form/")
 @app.post("/presences-form")
@@ -463,7 +466,7 @@ def afficher_portail():
         photo_url = pano.get('photo_url', '')
         panorama_cards_public += f"""
         <div class="bg-white rounded-2xl overflow-hidden shadow-sm border border-slate-200 flex flex-col">
-            <img src="{photo_url}" class="w-full h-48 object-cover bg-slate-100" onerror="this.onerror=null; this.src='https://via.placeholder.com/400x300?text=Image+Indisponible';">
+            <img src="{photo_url}" class="w-full h-48 object-cover bg-slate-100" onerror="this.onerror=null; this.src='https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=400&auto=format&fit=crop&q=60';">
             <div class="p-4 flex-1 flex flex-col justify-between">
                 <p class="text-xs font-semibold text-slate-800 mb-2">"{pano.get('legende', '')}"</p>
                 <span class="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full self-start">📸 Publié par {auteur_nom}</span>
@@ -643,7 +646,7 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
             photo_url = pano.get('photo_url', '')
             panorama_cards_html += f"""
             <div class="bg-white rounded-2xl overflow-hidden shadow-sm border border-slate-200 flex flex-col">
-                <img src="{photo_url}" class="w-full h-44 object-cover bg-slate-100" onerror="this.onerror=null; this.src='https://via.placeholder.com/400x300?text=Image+Indisponible';">
+                <img src="{photo_url}" class="w-full h-44 object-cover bg-slate-100" onerror="this.onerror=null; this.src='https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=400&auto=format&fit=crop&q=60';">
                 <div class="p-3 flex-1 flex flex-col justify-between">
                     <p class="text-xs font-semibold text-slate-800 mb-2">"{pano.get('legende', '')}"</p>
                     <span class="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full self-start">📸 Publié par {auteur_nom}</span>
