@@ -14,7 +14,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="49.0")
+app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="50.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -104,10 +104,11 @@ async def creer_adherent_form(
 
         photo_path = ""
         if file_photo and file_photo.filename:
-            file_location = os.path.join(UPLOAD_DIR, file_photo.filename)
+            filename = f"{datetime.datetime.now().timestamp()}_{file_photo.filename}"
+            file_location = os.path.join(UPLOAD_DIR, filename)
             with open(file_location, "wb+") as file_object:
                 file_object.write(await file_photo.read())
-            photo_path = f"/static/uploads/{file_photo.filename}"
+            photo_path = f"/static/uploads/{filename}"
 
         mdp_securise = hacher_mdp(mot_de_passe)
 
@@ -125,10 +126,11 @@ async def modifier_photo(user_id: Optional[int] = Form(None), file_photo: Option
         return RedirectResponse(url="/", status_code=303)
     
     if file_photo and file_photo.filename:
-        file_location = os.path.join(UPLOAD_DIR, file_photo.filename)
+        filename = f"{datetime.datetime.now().timestamp()}_{file_photo.filename}"
+        file_location = os.path.join(UPLOAD_DIR, filename)
         with open(file_location, "wb+") as file_object:
             file_object.write(await file_photo.read())
-        photo_path = f"/static/uploads/{file_photo.filename}"
+        photo_path = f"/static/uploads/{filename}"
         supabase.table("adherents").update({"photo_profil": photo_path}).eq("id", user_id).execute()
 
     return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
@@ -252,10 +254,11 @@ async def ajouter_projet(
 ):
     photo_path = ""
     if file_projet and file_projet.filename:
-        file_location = os.path.join(UPLOAD_DIR, file_projet.filename)
+        filename = f"{datetime.datetime.now().timestamp()}_{file_projet.filename}"
+        file_location = os.path.join(UPLOAD_DIR, filename)
         with open(file_location, "wb+") as file_object:
             file_object.write(await file_projet.read())
-        photo_path = f"/static/uploads/{file_projet.filename}"
+        photo_path = f"/static/uploads/{filename}"
 
     supabase.table("projets").insert({
         "titre": titre, "description": description, "objectifs": objectifs,
@@ -281,14 +284,15 @@ async def ajouter_panorama(user_id: int = Form(...), legende: str = Form(...), f
     try:
         user_check = supabase.table("adherents").select("role").eq("id", user_id).execute()
         if not user_check.data or user_check.data[0]['role'] not in ['admin', 'tresorier']:
-            return HTMLResponse(content="<script>alert('Action non autorisée. Seuls les administrateurs peuvent ajouter des photos au panorama.'); window.history.back();</script>", status_code=403)
+            return HTMLResponse(content="<script>alert('Action non autorisée.'); window.history.back();</script>", status_code=403)
 
         for file_photo in files_photos:
             if file_photo and file_photo.filename:
-                file_location = os.path.join(UPLOAD_DIR, file_photo.filename)
+                filename = f"{datetime.datetime.now().timestamp()}_{file_photo.filename}"
+                file_location = os.path.join(UPLOAD_DIR, filename)
                 with open(file_location, "wb+") as file_object:
                     file_object.write(await file_photo.read())
-                photo_path = f"/static/uploads/{file_photo.filename}"
+                photo_path = f"/static/uploads/{filename}"
 
                 supabase.table("panorama_village").insert({
                     "legende": legende, "photo_url": photo_path, "auteur_id": user_id
@@ -470,11 +474,12 @@ def afficher_portail():
     for pano in all_panorama:
         adh_p = pano.get('adherents', {}) or {}
         auteur_nom = f"{adh_p.get('prenom', '')} {adh_p.get('nom', '')}" if adh_p else "Administration"
+        photo_url = pano.get('photo_url', '')
         panorama_cards_public += f"""
         <div class="bg-white rounded-2xl overflow-hidden shadow-sm border border-slate-200 flex flex-col">
-            <img src="{pano['photo_url']}" class="w-full h-48 object-cover" onerror="this.style.display='none'">
+            <img src="{photo_url}" class="w-full h-48 object-cover bg-slate-100" onerror="this.onerror=null; this.src='https://via.placeholder.com/400x300?text=Image+Indisponible';">
             <div class="p-4 flex-1 flex flex-col justify-between">
-                <p class="text-xs font-semibold text-slate-800 mb-2">"{pano['legende']}"</p>
+                <p class="text-xs font-semibold text-slate-800 mb-2">"{pano.get('legende', '')}"</p>
                 <span class="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full self-start">📸 Publié par {auteur_nom}</span>
             </div>
         </div>
@@ -649,11 +654,12 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
         for pano in all_panorama:
             adh_p = pano.get('adherents', {}) or {}
             auteur_nom = f"{adh_p.get('prenom', '')} {adh_p.get('nom', '')}" if adh_p else "Administration"
+            photo_url = pano.get('photo_url', '')
             panorama_cards_html += f"""
             <div class="bg-white rounded-2xl overflow-hidden shadow-sm border border-slate-200 flex flex-col">
-                <img src="{pano['photo_url']}" class="w-full h-44 object-cover" onerror="this.style.display='none'">
+                <img src="{photo_url}" class="w-full h-44 object-cover bg-slate-100" onerror="this.onerror=null; this.src='https://via.placeholder.com/400x300?text=Image+Indisponible';">
                 <div class="p-3 flex-1 flex flex-col justify-between">
-                    <p class="text-xs font-semibold text-slate-800 mb-2">"{pano['legende']}"</p>
+                    <p class="text-xs font-semibold text-slate-800 mb-2">"{pano.get('legende', '')}"</p>
                     <span class="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full self-start">📸 Publié par {auteur_nom}</span>
                 </div>
             </div>
