@@ -14,7 +14,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="37.0")
+app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="38.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -254,6 +254,48 @@ def enregistrer_presence(user_id: int = Form(...), adherent_id: int = Form(...),
     except Exception:
         pass
     return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
+
+@app.get("/adherents/export-pdf")
+def export_adherents_pdf():
+    res = supabase.table("adherents").select("*").order("nom").execute()
+    adherents = res.data
+
+    buffer = io.BytesIO()
+    p = canvas.Canvas(buffer, pagesize=letter)
+    width, height = letter
+
+    p.setFont("Helvetica-Bold", 14)
+    p.setFillColorRGB(0.15, 0.25, 0.35)
+    p.drawString(50, height - 40, "TINKA KA MEIN HAALDI FOTTI")
+    p.setFont("Helvetica", 9)
+    p.setFillColorRGB(0.4, 0.4, 0.4)
+    p.drawString(50, height - 55, "Annuaire Officiel des Adhérents")
+    p.setStrokeColorRGB(0.8, 0.8, 0.8)
+    p.line(50, height - 65, width - 50, height - 65)
+
+    p.setFont("Helvetica-Bold", 13)
+    p.setFillColorRGB(0, 0, 0)
+    p.drawString(50, height - 95, f"Liste Générale des Adhérents ({len(adherents)} membres)")
+
+    p.setFont("Helvetica", 10)
+    y = height - 130
+    for a in adherents:
+        nom = a.get('nom', '')
+        prenom = a.get('prenom', '')
+        secteur = a.get('secteur', '')
+        telephone = a.get('telephone', '')
+        role = a.get('role', '')
+        statut = a.get('statut', '')
+        
+        p.drawString(50, y, f"- {prenom} {nom} | Secteur: {secteur} | Tél: {telephone} | Rôle: {role} ({statut})")
+        y -= 20
+        if y < 50:
+            p.showPage()
+            y = height - 50
+
+    p.save()
+    buffer.seek(0)
+    return StreamingResponse(buffer, media_type="application/pdf", headers={"Content-Disposition": "attachment; filename=annuaire_adherents.pdf"})
 
 @app.get("/cotisations/export-pdf")
 def export_cotisations_pdf(periode: Optional[str] = Query(None)):
@@ -738,7 +780,10 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                     <div>
                         <h2 class="text-lg font-bold text-slate-700">👥 Annuaire des Adhérents ({len(all_adherents)})</h2>
                     </div>
-                    <input type="text" id="searchAdherent" placeholder="🔍 Rechercher..." onkeyup="filtrerAdherents()" class="p-2 text-xs border rounded-lg bg-slate-50 w-64">
+                    <div class="flex items-center gap-2">
+                        <a href="/adherents/export-pdf" target="_blank" class="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow flex items-center gap-1">📄 Exporter PDF</a>
+                        <input type="text" id="searchAdherent" placeholder="🔍 Rechercher..." onkeyup="filtrerAdherents()" class="p-2 text-xs border rounded-lg bg-slate-50 w-48">
+                    </div>
                 </div>
                 <div class="overflow-x-auto max-h-[400px] overflow-y-auto border border-slate-200 rounded-xl">
                     <table class="w-full text-left border-collapse bg-white">
