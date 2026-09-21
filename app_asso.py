@@ -14,7 +14,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="41.0")
+app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="42.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -203,17 +203,19 @@ def paiement_mobile(
     montant: float = Form(...),
     periode: str = Form(...),
     operateur: str = Form(...),
-    telephone_paiement: str = Form(...)
+    telephone_paiement: str = Form(...),
+    reference_transaction: str = Form(...),
+    numero_recepteur: str = Form(...)
 ):
     try:
-        mode = f"mobile_{operateur.lower()}"
+        mode = f"mobile_{operateur.lower()} (Réf: {reference_transaction} | Vers: {numero_recepteur})"
         supabase.table("cotisations").insert({
             "adherent_id": user_id,
             "montant": montant,
             "periode": periode,
             "mode_paiement": mode
         }).execute()
-        return HTMLResponse(content=f"<script>alert('Demande de paiement {operateur} initiée avec succès pour le numéro {telephone_paiement} !'); window.location.href='/dashboard?id={user_id}';</script>")
+        return HTMLResponse(content=f"<script>alert('Paiement {operateur} enregistré avec la référence {reference_transaction} !'); window.location.href='/dashboard?id={user_id}';</script>")
     except Exception as e:
         return HTMLResponse(content=f"<script>alert('Erreur lors du paiement mobile : {str(e)}'); window.location.href='/dashboard?id={user_id}';</script>")
 
@@ -547,7 +549,7 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
         param_res = supabase.table("parametres").select("solde_initial").eq("id", 1).execute()
         solde_initial = param_res.data[0]['solde_initial'] if param_res.data else 0.0
 
-        cotisations_caisse = sum([c['montant'] for c in all_cotisations if c.get('mode_paiement') != 'regularisation'])
+        cotisations_caisse = sum([c['montant'] for c in all_cotisations if "regularisation" not in str(c.get('mode_paiement', ''))])
         total_aides_approuvees = sum([ai['montant_demande'] for ai in all_aides if ai['statut_validation'] == 'approuve'])
         total_dec = sum([d['montant'] for d in all_decaissements])
         
@@ -592,17 +594,18 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
 
                 suivi_retards_html += f"<li class='py-1.5 border-b border-slate-100 flex justify-between items-center text-sm'><span><b>{a['prenom']} {a['nom']}</b> <span class='text-xs text-slate-400'>({a['secteur']})</span></span> {statut_ajour}</li>"
 
-            # SUIVI DES PAIEMENTS MOBILE MONEY POUR LE TRÉSORIER
+            # FILTRAGE ROBUSTE DES PAIEMENTS MOBILE MONEY (AVEC RECHERCHE SUR "mobile_")
             paiements_mobiles_admin = [c for c in all_cotisations if "mobile_" in str(c.get('mode_paiement', ''))]
             paiements_mobiles_rows = ""
             for pm in paiements_mobiles_admin:
                 adh_pm = pm.get('adherents', {}) or {}
                 date_paiement_fr = formater_date(pm.get('date_paiement', ''))
                 montant_fmt = formater_montant(pm['montant'])
+                mode_str = pm.get('mode_paiement', '')
                 paiements_mobiles_rows += f"""
                 <tr class="hover:bg-slate-50 border-b border-slate-100 text-sm">
                     <td class="p-2.5 font-bold text-slate-900">{adh_pm.get('prenom','')} {adh_pm.get('nom','')}</td>
-                    <td class="p-2.5 font-semibold text-blue-700 uppercase">{pm['mode_paiement'].replace('mobile_', '')}</td>
+                    <td class="p-2.5 font-semibold text-blue-700 uppercase">{mode_str}</td>
                     <td class="p-2.5 font-bold text-emerald-700">{montant_fmt} CFA</td>
                     <td class="p-2.5 text-slate-600">{pm['periode']}</td>
                     <td class="p-2.5 text-slate-500 text-xs">{date_paiement_fr}</td>
@@ -783,13 +786,13 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                 <ul class="max-h-60 overflow-y-auto pr-2">{suivi_retards_html}</ul>
             </div>
 
-            <!-- TABLEAU DE SUIVI DES PAIEMENTS MOBILE MONEY (POUR LE TRÉSORIER) -->
+            <!-- TABLEAU DE SUIVI DES PAIEMENTS MOBILE MONEY (AVEC RÉFÉRENCE ET N° RÉCEPTEUR) -->
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
                 <h2 class="text-lg font-bold text-blue-700 mb-4 border-b pb-2">📱 Suivi des Paiements Mobile Money (Wave / Orange Money)</h2>
                 <div class="overflow-x-auto max-h-60 overflow-y-auto border border-slate-200 rounded-xl">
                     <table class="w-full text-left border-collapse bg-white">
                         <thead class="bg-slate-100 text-slate-600 text-xs uppercase sticky top-0 z-10">
-                            <tr><th class="p-2.5">Adhérent</th><th class="p-2.5">Opérateur</th><th class="p-2.5">Montant</th><th class="p-2.5">Période</th><th class="p-2.5">Date</th><th class="p-2.5 text-right">Action</th></tr>
+                            <tr><th class="p-2.5">Adhérent</th><th class="p-2.5">Détails & Référence</th><th class="p-2.5">Montant</th><th class="p-2.5">Période</th><th class="p-2.5">Date</th><th class="p-2.5 text-right">Action</th></tr>
                         </thead>
                         <tbody>{paiements_mobiles_rows or '<tr><td colspan="6" class="p-4 text-center text-sm text-slate-400">Aucun paiement mobile initié pour le moment.</td></tr>'}</tbody>
                     </table>
@@ -823,7 +826,7 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                             <select name="evenement_titre" required class="w-full p-2.5 border rounded-lg text-sm bg-white">{options_evenements_titres}</select>
                         </div>
                         <div>
-                            <label class="block text-xs font-bold text-slate-600 mb-1">Date (JJ-MM-AAAA)</label>
+                            <label class="block text-xs font-bold text-slate-600 mb-1">Date</label>
                             <input type="date" name="date_reunion" required class="w-full p-2.5 border rounded-lg text-sm bg-white">
                         </div>
                     </div>
@@ -905,7 +908,7 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                     <input type="hidden" name="user_id" value="{user['id']}">
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div><label class="block text-xs font-bold text-slate-600 mb-1">Titre de l'événement</label><input type="text" name="titre" required class="w-full p-2 text-sm border rounded-lg"></div>
-                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Date (JJ-MM-AAAA)</label><input type="date" name="date_evenement" required class="w-full p-2 text-sm border rounded-lg"></div>
+                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Date</label><input type="date" name="date_evenement" required class="w-full p-2 text-sm border rounded-lg"></div>
                     </div>
                     <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         <div><label class="block text-xs font-bold text-slate-600 mb-1">Lieu</label><input type="text" name="lieu" required class="w-full p-2 text-sm border rounded-lg"></div>
@@ -1004,9 +1007,9 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                 </form>
             </div>
 
-            <!-- MODULE PAIEMENT MOBILE (WAVE / ORANGE MONEY) POUR LES MEMBRES -->
+            <!-- MODULE PAIEMENT MOBILE (WAVE / ORANGE MONEY) AVEC SAISIE DE RÉFÉRENCE -->
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
-                <h2 class="text-lg font-bold text-blue-700 mb-4 border-b pb-2">📱 Effectuer un Paiement Mobile (Wave / Orange Money)</h2>
+                <h2 class="text-lg font-bold text-blue-700 mb-4 border-b pb-2">📱 Déclarer un Paiement Mobile (Wave / Orange Money)</h2>
                 <form action="/paiement-mobile-form" method="POST" class="space-y-3">
                     <input type="hidden" name="user_id" value="{user['id']}">
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1018,15 +1021,16 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                             </select>
                         </div>
                         <div>
-                            <label class="block text-xs font-bold text-slate-600 mb-1">Numéro de téléphone payeur</label>
-                            <input type="text" name="telephone_paiement" value="{user['telephone']}" required class="w-full p-2 text-sm border rounded-lg">
+                            <label class="block text-xs font-bold text-slate-600 mb-1">N° du Trésorier / Admin récepteur</label>
+                            <input type="text" name="numero_recepteur" placeholder="ex: 221770000000" required class="w-full p-2 text-sm border rounded-lg">
                         </div>
                     </div>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div><label class="block text-xs font-bold text-slate-600 mb-1">Référence Transaction</label><input type="text" name="reference_transaction" placeholder="ex: WV-12345678" required class="w-full p-2 text-sm border rounded-lg"></div>
                         <div><label class="block text-xs font-bold text-slate-600 mb-1">Montant (CFA)</label><input type="number" name="montant" required class="w-full p-2 text-sm border rounded-lg"></div>
                         <div><label class="block text-xs font-bold text-slate-600 mb-1">Période concernée</label><input type="text" name="periode" placeholder="ex: 2026-09" required class="w-full p-2 text-sm border rounded-lg"></div>
                     </div>
-                    <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-lg text-sm shadow">Payer par Mobile Money</button>
+                    <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-lg text-sm shadow">Déclarer & Soumettre le paiement</button>
                 </form>
             </div>
 
