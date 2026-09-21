@@ -14,7 +14,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="42.0")
+app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="43.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -208,7 +208,7 @@ def paiement_mobile(
     numero_recepteur: str = Form(...)
 ):
     try:
-        mode = f"mobile_{operateur.lower()} (Réf: {reference_transaction} | Vers: {numero_recepteur})"
+        mode = f"mobile_{operateur.lower()} (Réf: {reference_transaction} | Vers: {numero_recepteur} | Tél: {telephone_paiement})"
         supabase.table("cotisations").insert({
             "adherent_id": user_id,
             "montant": montant,
@@ -594,7 +594,6 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
 
                 suivi_retards_html += f"<li class='py-1.5 border-b border-slate-100 flex justify-between items-center text-sm'><span><b>{a['prenom']} {a['nom']}</b> <span class='text-xs text-slate-400'>({a['secteur']})</span></span> {statut_ajour}</li>"
 
-            # FILTRAGE ROBUSTE DES PAIEMENTS MOBILE MONEY (AVEC RECHERCHE SUR "mobile_")
             paiements_mobiles_admin = [c for c in all_cotisations if "mobile_" in str(c.get('mode_paiement', ''))]
             paiements_mobiles_rows = ""
             for pm in paiements_mobiles_admin:
@@ -786,7 +785,7 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                 <ul class="max-h-60 overflow-y-auto pr-2">{suivi_retards_html}</ul>
             </div>
 
-            <!-- TABLEAU DE SUIVI DES PAIEMENTS MOBILE MONEY (AVEC RÉFÉRENCE ET N° RÉCEPTEUR) -->
+            <!-- TABLEAU DE SUIVI DES PAIEMENTS MOBILE MONEY (TRÉSORIER) -->
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
                 <h2 class="text-lg font-bold text-blue-700 mb-4 border-b pb-2">📱 Suivi des Paiements Mobile Money (Wave / Orange Money)</h2>
                 <div class="overflow-x-auto max-h-60 overflow-y-auto border border-slate-200 rounded-xl">
@@ -1007,12 +1006,12 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                 </form>
             </div>
 
-            <!-- MODULE PAIEMENT MOBILE (WAVE / ORANGE MONEY) AVEC SAISIE DE RÉFÉRENCE -->
+            <!-- MODULE PAIEMENT MOBILE (WAVE / ORANGE MONEY) CORRIGÉ -->
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
                 <h2 class="text-lg font-bold text-blue-700 mb-4 border-b pb-2">📱 Déclarer un Paiement Mobile (Wave / Orange Money)</h2>
                 <form action="/paiement-mobile-form" method="POST" class="space-y-3">
                     <input type="hidden" name="user_id" value="{user['id']}">
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         <div>
                             <label class="block text-xs font-bold text-slate-600 mb-1">Opérateur</label>
                             <select name="operateur" required class="w-full p-2 text-sm border rounded-lg bg-white">
@@ -1021,7 +1020,11 @@ def afficher_dashboard(id: int, filtre_periode: Optional[str] = Query(None)):
                             </select>
                         </div>
                         <div>
-                            <label class="block text-xs font-bold text-slate-600 mb-1">N° du Trésorier / Admin récepteur</label>
+                            <label class="block text-xs font-bold text-slate-600 mb-1">Votre N° de téléphone payeur</label>
+                            <input type="text" name="telephone_paiement" value="{user['telephone']}" required class="w-full p-2 text-sm border rounded-lg">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-600 mb-1">N° du Trésorier récepteur</label>
                             <input type="text" name="numero_recepteur" placeholder="ex: 221770000000" required class="w-full p-2 text-sm border rounded-lg">
                         </div>
                     </div>
