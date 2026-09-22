@@ -13,7 +13,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="60.2")
+app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="61.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -79,7 +79,6 @@ def afficher_portail():
     try:
         url_site = "https://tinka-association.onrender.com"
         qr_b64 = generer_qrcode_base64(url_site)
-
         return f"""
         <!DOCTYPE html>
         <html lang="fr">
@@ -96,14 +95,12 @@ def afficher_portail():
                     <h1 class="text-2xl font-black text-slate-900 tracking-tight">Tinka ka Mein Haaldi fotti</h1>
                     <p class="text-xs text-slate-500 mt-1 font-medium">Gestion administrative, financière & Daara</p>
                 </div>
-                
                 <div class="flex justify-center mb-6">
                     <div class="bg-white p-3 rounded-2xl border-2 border-dashed border-emerald-200 shadow-sm text-center">
                         <img src="data:image/png;base64,{qr_b64}" alt="QR Code" class="w-28 h-28 mx-auto mb-2 rounded-xl">
                         <span class="text-[11px] font-bold text-slate-600">Scannez pour accéder au site</span>
                     </div>
                 </div>
-
                 <div class="space-y-6">
                     <div class="bg-slate-50/80 p-5 rounded-2xl border border-slate-200/80 shadow-inner">
                         <h2 class="text-sm font-extrabold text-slate-800 mb-3 flex items-center gap-2 uppercase tracking-wide">🔐 Connexion</h2>
@@ -119,7 +116,6 @@ def afficher_portail():
                             <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-4 rounded-xl shadow-lg shadow-blue-600/20 transition duration-200 text-sm">Se connecter</button>
                         </form>
                     </div>
-
                     <div class="bg-slate-50/80 p-5 rounded-2xl border border-slate-200/80 shadow-inner">
                         <h2 class="text-sm font-extrabold text-emerald-800 mb-3 flex items-center gap-2 uppercase tracking-wide">📝 Nouvel Adhérent</h2>
                         <form action="/adherents-form" method="POST" enctype="multipart/form-data" class="space-y-3">
@@ -153,11 +149,9 @@ def login_form(telephone: Optional[str] = Form(None), mot_de_passe: Optional[str
         users = res.data or []
         if not users:
             return HTMLResponse(content="<script>alert('Numéro de téléphone ou mot de passe incorrect.'); window.location.href='/';</script>", status_code=401)
-        
         user = users[0]
         if not verifier_mdp(mot_de_passe, user['mot_de_passe']):
             return HTMLResponse(content="<script>alert('Numéro de téléphone ou mot de passe incorrect.'); window.location.href='/';</script>", status_code=401)
-
         if user.get('statut') != 'actif':
             return HTMLResponse(content="<script>alert('Votre compte est en attente de validation par l\\'administrateur.'); window.location.href='/';</script>", status_code=403)
         return RedirectResponse(url=f"/dashboard?id={user['id']}", status_code=status.HTTP_303_SEE_OTHER)
@@ -177,10 +171,8 @@ async def creer_adherent_form(
         existing_user = supabase.table("adherents").select("id").eq("telephone", telephone).execute()
         if existing_user.data:
             return HTMLResponse(content="<script>alert('Erreur : Ce numéro de téléphone est déjà associé à un compte existant.'); window.location.href='/';</script>")
-
         photo_b64 = await fichier_vers_base64(file_photo)
         mdp_securise = hacher_mdp(mot_de_passe or "123456")
-
         supabase.table("adherents").insert({
             "nom": nom or "", "prenom": prenom or "", "email": f"{telephone}@tinka.local", "telephone": telephone,
             "adresse": adresse or "", "secteur": secteur or "", "photo_profil": photo_b64, "mot_de_passe": mdp_securise
@@ -226,6 +218,46 @@ def maj_solde_initial(user_id: Optional[int] = Form(None), solde_initial: Option
     try:
         supabase.table("parametres").update({"solde_initial": solde_initial}).eq("id", 1).execute()
         return HTMLResponse(content=f"<script>alert('Solde initial mis à jour avec succès !'); window.location.href='/dashboard?id={user_id}';</script>")
+    except Exception as e:
+        return HTMLResponse(content=f"<script>alert('Erreur : {str(e)}'); window.location.href='/dashboard?id={user_id}';</script>")
+
+@app.api_route("/admin/saisir-cotisation", methods=["GET", "POST"], response_class=HTMLResponse)
+def saisir_cotisation(
+    user_id: Optional[int] = Form(None), adherent_id: Optional[int] = Form(None),
+    montant: Optional[float] = Form(None), periode: Optional[str] = Form(None), mode_paiement: Optional[str] = Form(None)
+):
+    if not user_id or not adherent_id:
+        return RedirectResponse(url="/", status_code=303)
+    try:
+        supabase.table("cotisations").insert({
+            "adherent_id": adherent_id, "montant": montant or 0, "periode": periode or "",
+            "mode_paiement": mode_paiement or "especes", "statut_paiement": "valide"
+        }).execute()
+        return HTMLResponse(content=f"<script>alert('Cotisation enregistrée et validée avec succès !'); window.location.href='/dashboard?id={user_id}';</script>")
+    except Exception as e:
+        return HTMLResponse(content=f"<script>alert('Erreur : {str(e)}'); window.location.href='/dashboard?id={user_id}';</script>")
+
+@app.api_route("/admin/creer-evenement", methods=["GET", "POST"], response_class=HTMLResponse)
+def creer_evenement(user_id: Optional[int] = Form(None), titre: Optional[str] = Form(None), date_reunion: Optional[str] = Form(None), description: Optional[str] = Form(None)):
+    if not user_id:
+        return RedirectResponse(url="/", status_code=303)
+    try:
+        supabase.table("evenements").insert({
+            "titre": titre or "", "date_reunion": date_reunion or "", "description": description or ""
+        }).execute()
+    except Exception:
+        pass
+    return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
+
+@app.api_route("/admin/pointer-presence", methods=["GET", "POST"], response_class=HTMLResponse)
+def pointer_presence(user_id: Optional[int] = Form(None), adherent_id: Optional[int] = Form(None), evenement_titre: Optional[str] = Form(None), date_reunion: Optional[str] = Form(None), statut_presence: Optional[str] = Form(None)):
+    if not user_id or not adherent_id:
+        return RedirectResponse(url="/", status_code=303)
+    try:
+        supabase.table("presences_association").insert({
+            "adherent_id": adherent_id, "evenement_titre": evenement_titre or "Réunion", "date_reunion": date_reunion or str(datetime.date.today()), "statut_presence": statut_presence or "Present"
+        }).execute()
+        return HTMLResponse(content=f"<script>alert('Présence enregistrée !'); window.location.href='/dashboard?id={user_id}';</script>")
     except Exception as e:
         return HTMLResponse(content=f"<script>alert('Erreur : {str(e)}'); window.location.href='/dashboard?id={user_id}';</script>")
 
@@ -284,20 +316,16 @@ def ajouter_projet(
 def export_adherents_pdf():
     res = supabase.table("adherents").select("*").order("nom").execute()
     adherents = res.data or []
-
     buffer = io.BytesIO()
     p = canvas.Canvas(buffer, pagesize=letter)
     width, height = letter
-
     p.setFont("Helvetica-Bold", 14)
     p.drawString(50, height - 40, "TINKA KA MEIN HAALDI FOTTI")
     p.setFont("Helvetica", 9)
     p.drawString(50, height - 55, "Annuaire Officiel des Adhérents")
     p.line(50, height - 65, width - 50, height - 65)
-
     p.setFont("Helvetica-Bold", 13)
     p.drawString(50, height - 95, f"Liste Générale des Adhérents ({len(adherents)} membres)")
-
     p.setFont("Helvetica", 10)
     y = height - 130
     for a in adherents:
@@ -306,7 +334,6 @@ def export_adherents_pdf():
         if y < 50:
             p.showPage()
             y = height - 50
-
     p.save()
     buffer.seek(0)
     return StreamingResponse(buffer, media_type="application/pdf", headers={"Content-Disposition": "attachment; filename=annuaire_adherents.pdf"})
@@ -316,24 +343,19 @@ def telecharger_recu_pdf(cotisation_id: int):
     res = supabase.table("cotisations").select("*, adherents(nom, prenom, secteur, telephone)").eq("id", cotisation_id).execute()
     if not res.data:
         return HTMLResponse("Reçu introuvable", status_code=404)
-    
     c = res.data[0]
     if c.get('statut_paiement') != 'valide':
         return HTMLResponse("<script>alert('Accès refusé : Ce paiement n\\'a pas encore été validé par l\\'administration.'); window.history.back();</script>", status_code=403)
-
     adh = c.get('adherents', {}) or {}
     montant_fmt = formater_montant(c.get('montant', 0))
-
     buffer = io.BytesIO()
     p = canvas.Canvas(buffer, pagesize=letter)
     width, height = letter
-
     p.setFont("Helvetica-Bold", 16)
     p.drawString(50, height - 50, "TINKA KA MEIN HAALDI FOTTI")
     p.setFont("Helvetica", 10)
     p.drawString(50, height - 68, "Reçu Officiel de Paiement de Cotisation")
     p.line(50, height - 80, width - 50, height - 80)
-
     p.setFont("Helvetica-Bold", 12)
     p.drawString(50, height - 120, f"Reçu N° : TK-{c['id']:04d}")
     p.setFont("Helvetica", 11)
@@ -341,13 +363,11 @@ def telecharger_recu_pdf(cotisation_id: int):
     p.drawString(50, height - 170, f"Membre : {adh.get('prenom','')} {adh.get('nom','')}")
     p.drawString(50, height - 195, f"Secteur : {adh.get('secteur','')}")
     p.drawString(50, height - 220, f"Téléphone : {adh.get('telephone','')}")
-
     p.rect(50, height - 310, width - 100, 60, stroke=1, fill=0)
     p.setFont("Helvetica-Bold", 14)
     p.drawString(70, height - 265, f"Montant Versé : {montant_fmt} CFA")
     p.setFont("Helvetica", 11)
     p.drawString(70, height - 285, f"Période couverte : {c.get('periode','')} | Mode : {c.get('mode_paiement','')}")
-
     p.save()
     buffer.seek(0)
     return StreamingResponse(buffer, media_type="application/pdf", headers={"Content-Disposition": f"attachment; filename=recu_cotisation_{c['id']}.pdf"})
@@ -412,7 +432,7 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
 
         suivi_retards_html = ""
         for a in all_actifs:
-            cotis_membre = [c['periode'] for c in all_cotisations if c.get('adherent_id') == a['id'] and c.get('statut_paiement') == 'valide']
+            cotis_membre = [c['periode'] for c in all_cotisations if c.get('adherent_id') == a['id'] and c.get('statut_paiement'] == 'valide']
             mois_manquants = [m for m in mois_12 if m not in cotis_membre]
             statut_ajour = "<span class='text-emerald-700 font-extrabold bg-emerald-50 px-2.5 py-1 rounded-full text-xs'>À jour</span>" if not mois_manquants else f"<span class='text-red-700 font-extrabold bg-red-50 px-2.5 py-1 rounded-full text-xs'>Retard ({len(mois_manquants)} mois)</span>"
             suivi_retards_html += f"<li class='py-2.5 border-b border-slate-100 flex justify-between items-center text-sm'><span><b>{a.get('prenom','')} {a.get('nom','')}</b> <span class='text-xs text-slate-400 font-medium'>({a.get('secteur','')})</span></span> {statut_ajour}</li>"
@@ -440,7 +460,7 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
             btn_modif = f"""<button onclick="openModal({a['id']})" class="bg-blue-50 hover:bg-blue-100 text-blue-700 px-3 py-1 rounded-xl text-xs font-bold ml-1 transition">⚙️</button>""" if is_tresorier or a['id'] == user['id'] else ""
 
             adherents_table_rows += f"""
-            <tr class="hover:bg-slate-50 border-b text-sm">
+            <tr class="hover:bg-slate-50 border-b text-sm adherent-row" data-nom="{a.get('prenom','').lower()} {a.get('nom','').lower()}" data-secteur="{a.get('secteur','').lower()}" data-tel="{a.get('telephone','')}">
                 <td class="p-3 font-semibold text-slate-900">{a.get('prenom','')} {a.get('nom','')}</td>
                 <td class="p-3"><span class="text-[11px] bg-slate-100 text-slate-700 px-2.5 py-1 rounded-full font-bold uppercase">{a.get('role','')}</span></td>
                 <td class="p-3 text-slate-600">{a.get('secteur','')}</td>
@@ -512,22 +532,48 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
                 actions_aide = f"<span class='text-xs font-bold py-1 px-2.5 rounded-full bg-slate-100 text-slate-600 uppercase'>{st_aide}</span>"
             aides_admin_html += f"<li class='py-3 border-b flex justify-between items-center text-sm'><div><b>{adh_aide.get('prenom','')} {adh_aide.get('nom','')}</b> — {ai.get('motif','')} <span class='text-amber-700 font-black'>({formater_montant(ai.get('montant_demande',0))} CFA)</span></div><div>{actions_aide}</div></li>"
 
+        options_adherents_select = "".join([f"<option value='{a['id']}'>{a.get('prenom','')} {a.get('nom','')} ({a.get('secteur','')})</option>" for a in all_actifs])
+        options_evenements_select = "".join([f"<option value='{e.get('titre','')}' data-date='{e.get('date_reunion','')}' >{e.get('titre','')} ({formater_date(e.get('date_reunion',''))})</option>" for e in all_evenements])
+
         tresorerie_box_html = f"""
-        <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/80">
-            <h2 class="text-base font-black mb-4 border-b pb-3 text-slate-800">💼 Trésorerie & Solde Global</h2>
-            """
+        <div class="space-y-6">
+            <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/80">
+                <h2 class="text-base font-black mb-4 border-b pb-3 text-slate-800">💼 Trésorerie & Solde Global</h2>
+                """
         if is_tresorier:
             tresorerie_box_html += f"""
-            <form action="/admin/maj-solde-initial" method="POST" class="bg-gradient-to-r from-emerald-50 to-teal-50 p-4 rounded-2xl border border-emerald-200/60 mb-6 flex gap-3 items-end shadow-inner">
-                <input type="hidden" name="user_id" value="{user['id']}">
-                <div class="flex-1"><label class="block text-xs font-bold text-emerald-900 mb-1">Solde Initial Réel en Caisse</label><input type="number" name="solde_initial" value="{solde_initial}" required class="w-full p-2.5 text-sm bg-white border border-emerald-300 rounded-xl shadow-sm"></div>
-                <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-5 rounded-xl text-sm shadow-md transition">Mettre à jour</button>
-            </form>
+                <form action="/admin/maj-solde-initial" method="POST" class="bg-gradient-to-r from-emerald-50 to-teal-50 p-4 rounded-2xl border border-emerald-200/60 mb-6 flex gap-3 items-end shadow-inner">
+                    <input type="hidden" name="user_id" value="{user['id']}">
+                    <div class="flex-1"><label class="block text-xs font-bold text-emerald-900 mb-1">Solde Initial Réel en Caisse</label><input type="number" name="solde_initial" value="{solde_initial}" required class="w-full p-2.5 text-sm bg-white border border-emerald-300 rounded-xl shadow-sm"></div>
+                    <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-5 rounded-xl text-sm shadow-md transition">Mettre à jour</button>
+                </form>
+
+                <div class="bg-slate-50 p-5 rounded-2xl border border-slate-200 mb-6">
+                    <h3 class="text-xs font-black text-slate-800 mb-3 uppercase tracking-wider">➕ Saisie Manuelle d'une Cotisation Membre</h3>
+                    <form action="/admin/saisir-cotisation" method="POST" class="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                        <input type="hidden" name="user_id" value="{user['id']}">
+                        <select name="adherent_id" required class="p-2.5 text-sm border border-slate-300 rounded-xl bg-white font-semibold">
+                            <option value="">-- Choisir un membre --</option>
+                            {options_adherents_select}
+                        </select>
+                        <input type="text" name="periode" placeholder="Période (ex: 2026-09)" required class="p-2.5 text-sm border border-slate-300 rounded-xl bg-white">
+                        <input type="number" name="montant" placeholder="Montant (CFA)" required class="p-2.5 text-sm border border-slate-300 rounded-xl bg-white">
+                        <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-4 rounded-xl text-sm shadow-md transition">Enregistrer</button>
+                    </form>
+                </div>
             """
         tresorerie_box_html += f"""
-            <div class="text-center bg-gradient-to-r from-slate-900 to-emerald-950 text-white py-4 rounded-2xl font-black text-lg mb-6 shadow-md">Solde Réel en Caisse : <span class="text-emerald-400">{formater_montant(solde)} CFA</span></div>
-            <h3 class="text-xs font-black text-slate-600 mb-3 uppercase tracking-wider">État des cotisations membres</h3>
-            <ul class="max-h-60 overflow-y-auto pr-2">{suivi_retards_html}</ul>
+                <div class="text-center bg-gradient-to-r from-slate-900 to-emerald-950 text-white py-4 rounded-2xl font-black text-lg mb-6 shadow-md">Solde Réel en Caisse : <span class="text-emerald-400">{formater_montant(solde)} CFA</span></div>
+                <h3 class="text-xs font-black text-slate-600 mb-3 uppercase tracking-wider">État des cotisations membres</h3>
+                <ul class="max-h-60 overflow-y-auto pr-2">{suivi_retards_html}</ul>
+            </div>
+            
+            <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/80">
+                <h2 class="text-base font-black mb-3 border-b pb-3 text-slate-800">📱 Paiements Mobile Money</h2>
+                <div class="overflow-x-auto max-h-60 overflow-y-auto border border-slate-200 rounded-2xl">
+                    <table class="w-full text-left bg-white"><thead class="bg-slate-100 text-[11px] font-bold text-slate-600 uppercase"><tr><th class="p-3">Adhérent</th><th class="p-3">Détails</th><th class="p-3">Montant</th><th class="p-3">Période</th><th class="p-3 text-right">Action</th></tr></thead><tbody>{paiements_mobiles_rows or '<tr><td colspan="5" class="p-4 text-center text-sm text-slate-400">Aucun paiement.</td></tr>'}</tbody></table>
+                </div>
+            </div>
         </div>
         """
 
@@ -552,7 +598,6 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
                 </div>
                 <div class="bg-white p-2 rounded-2xl shadow-lg"><img src="data:image/png;base64,{qr_perso_b64}" class="w-16 h-16 rounded-xl"></div>
             </div>
-
             <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/85">
                 <h2 class="text-base font-black mb-4 border-b pb-3 text-slate-800">📱 Déclarer un Paiement Mobile</h2>
                 <form action="/paiement-mobile-form" method="POST" class="space-y-3.5">
@@ -570,10 +615,92 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
                     <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-xl text-sm shadow-md transition">Soumettre la déclaration</button>
                 </form>
             </div>
-
             <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/85">
                 <h2 class="text-base font-black mb-4 border-b pb-3 text-slate-800">📋 Mes Cotisations & Reçus</h2>
                 <ul class="max-h-60 overflow-y-auto pr-2">{mois_payes_html or '<p class="text-sm text-slate-400">Aucun versement enregistré pour le moment.</p>'}</ul>
+            </div>
+            """
+
+        evenements_cards = "".join([f"<div class='bg-slate-50 p-4 rounded-2xl border border-slate-200 mb-3'><h4 class='font-black text-sm text-slate-800'>{e.get('titre','')}</h4><p class='text-xs text-slate-500'>Date : {formater_date(e.get('date_reunion',''))}</p><p class='text-xs text-slate-600 mt-1'>{e.get('description','')}</p></div>" for e in all_evenements])
+        
+        admin_event_pointage_html = ""
+        if is_tresorier:
+            admin_event_pointage_html = f"""
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/80">
+                    <h2 class="text-base font-black mb-4 border-b pb-3 text-slate-800">📅 Planification d'Événement</h2>
+                    <form action="/admin/creer-evenement" method="POST" class="space-y-3">
+                        <input type="hidden" name="user_id" value="{user['id']}">
+                        <div><label class="block text-xs font-bold mb-1 text-slate-600">Titre de l'événement</label><input type="text" name="titre" placeholder="ex: Assemblée Générale Mensuelle" required class="w-full p-2.5 text-sm border border-slate-300 rounded-xl"></div>
+                        <div><label class="block text-xs font-bold mb-1 text-slate-600">Date</label><input type="date" name="date_reunion" required class="w-full p-2.5 text-sm border border-slate-300 rounded-xl"></div>
+                        <div><label class="block text-xs font-bold mb-1 text-slate-600">Description</label><textarea name="description" rows="2" class="w-full p-2.5 text-sm border border-slate-300 rounded-xl" placeholder="Ordre du jour..."></textarea></div>
+                        <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-xl text-sm font-bold shadow-md transition">Créer l'événement</button>
+                    </form>
+                    <div class="mt-4 max-h-40 overflow-y-auto">{evenements_cards or '<p class="text-xs text-slate-400">Aucun événement planifié.</p>'}</div>
+                </div>
+                <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/80">
+                    <h2 class="text-base font-black mb-4 border-b pb-3 text-slate-800">📌 Scanner / Pointage Présence</h2>
+                    <form action="/admin/pointer-presence" method="POST" class="space-y-3">
+                        <input type="hidden" name="user_id" value="{user['id']}">
+                        <div>
+                            <label class="block text-xs font-bold mb-1 text-slate-600">Sélectionner l'événement</label>
+                            <select name="evenement_titre" id="select-event" onchange="updateEventDate(this)" required class="w-full p-2.5 text-sm border border-slate-300 rounded-xl bg-white font-semibold">
+                                <option value="">-- Choisir un événement --</option>
+                                {options_evenements_select}
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold mb-1 text-slate-600">Date de la réunion</label>
+                            <input type="date" name="date_reunion" id="input-event-date" required class="w-full p-2.5 text-sm border border-slate-300 rounded-xl">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold mb-1 text-slate-600">Membre présent</label>
+                            <select name="adherent_id" required class="w-full p-2.5 text-sm border border-slate-300 rounded-xl bg-white font-semibold">
+                                <option value="">-- Choisir un membre --</option>
+                                {options_adherents_select}
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold mb-1 text-slate-600">Statut</label>
+                            <select name="statut_presence" required class="w-full p-2.5 text-sm border border-slate-300 rounded-xl bg-white font-semibold">
+                                <option value="Present">Présent(e)</option>
+                                <option value="Retard">Retard</option>
+                                <option value="Absent">Absent(e)</option>
+                                <option value="Excuse">Excusé(e)</option>
+                            </select>
+                        </div>
+                        <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-xl text-sm font-bold shadow-md transition">Valider le pointage</button>
+                    </form>
+                </div>
+            </div>
+            """
+
+        admin_projet_form = ""
+        if is_tresorier:
+            admin_projet_form = f"""
+            <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/80 mb-6">
+                <h2 class="text-base font-black mb-4 border-b pb-3 text-slate-800">➕ Proposer / Ajouter un Projet</h2>
+                <form action="/projets-form" method="POST" class="space-y-3">
+                    <input type="hidden" name="user_id" value="{user['id']}">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div><label class="block text-xs font-bold mb-1 text-slate-600">Titre du projet</label><input type="text" name="titre" required class="w-full p-2.5 text-sm border border-slate-300 rounded-xl"></div>
+                        <div><label class="block text-xs font-bold mb-1 text-slate-600">Coût estimé (CFA)</label><input type="number" name="cout" required class="w-full p-2.5 text-sm border border-slate-300 rounded-xl"></div>
+                    </div>
+                    <div><label class="block text-xs font-bold mb-1 text-slate-600">Description</label><textarea name="description" rows="2" required class="w-full p-2.5 text-sm border border-slate-300 rounded-xl"></textarea></div>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div><label class="block text-xs font-bold mb-1 text-slate-600">Objectifs</label><input type="text" name="objectifs" class="w-full p-2.5 text-sm border border-slate-300 rounded-xl"></div>
+                        <div><label class="block text-xs font-bold mb-1 text-slate-600">Planning / Chronologie</label><input type="text" name="chronologie" class="w-full p-2.5 text-sm border border-slate-300 rounded-xl"></div>
+                        <div>
+                            <label class="block text-xs font-bold mb-1 text-slate-600">Statut</label>
+                            <select name="statut" class="w-full p-2.5 text-sm border border-slate-300 rounded-xl bg-white font-semibold">
+                                <option value="En cours">En cours</option>
+                                <option value="Planifié">Planifié</option>
+                                <option value="Terminé">Terminé</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-xl text-sm font-bold shadow-md transition">Publier le projet</button>
+                </form>
             </div>
             """
 
@@ -601,6 +728,27 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
                 }}
                 function openModal(id) {{ document.getElementById('modal-' + id).classList.remove('hidden'); }}
                 function closeModal(id) {{ document.getElementById('modal-' + id).classList.add('hidden'); }}
+                function filterAnnuaire() {{
+                    let input = document.getElementById('search-annuaire').value.toLowerCase();
+                    let rows = document.getElementsByClassName('adherent-row');
+                    for (let r of rows) {{
+                        let nom = r.getAttribute('data-nom');
+                        let secteur = r.getAttribute('data-secteur');
+                        let tel = r.getAttribute('data-tel');
+                        if (nom.includes(input) || secteur.includes(input) || tel.includes(input)) {{
+                            r.style.display = "";
+                        }} else {{
+                            r.style.display = "none";
+                        }}
+                    }}
+                }}
+                function updateEventDate(select) {{
+                    let opt = select.options[select.selectedIndex];
+                    let dt = opt.getAttribute('data-date');
+                    if (dt) {{
+                        document.getElementById('input-event-date').value = dt.substring(0, 10);
+                    }}
+                }}
             </script>
         </head>
         <body class="bg-gradient-to-br from-slate-50 via-slate-100 to-emerald-50 text-slate-800 font-sans min-h-screen py-6 px-4">
@@ -627,24 +775,32 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
 
                 <div id="tab-tresorerie" class="tab-content space-y-6">
                     {tresorerie_box_html}
-                    <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/80">
-                        <h2 class="text-base font-black mb-3 border-b pb-3 text-slate-800">📱 Paiements Mobile Money</h2>
-                        <div class="overflow-x-auto max-h-60 overflow-y-auto border border-slate-200 rounded-2xl">
-                            <table class="w-full text-left bg-white"><thead class="bg-slate-100 text-[11px] font-bold text-slate-600 uppercase"><tr><th class="p-3">Adhérent</th><th class="p-3">Détails</th><th class="p-3">Montant</th><th class="p-3">Période</th><th class="p-3 text-right">Action</th></tr></thead><tbody>{paiements_mobiles_rows or '<tr><td colspan="5" class="p-4 text-center text-sm text-slate-400">Aucun paiement.</td></tr>'}</tbody></table>
-                        </div>
-                    </div>
                 </div>
 
                 <div id="tab-adherents" class="tab-content hidden space-y-6">
                     <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/80">
-                        <div class="flex justify-between items-center mb-4 border-b pb-3"><h2 class="text-base font-black text-slate-800">👥 Annuaire ({len(all_adherents)})</h2><a href="/adherents/export-pdf" target="_blank" class="bg-red-600 hover:bg-red-700 text-white px-3.5 py-2 rounded-xl text-xs font-extrabold shadow-md transition">📄 Exporter PDF</a></div>
-                        <div class="overflow-x-auto max-h-96 overflow-y-auto border border-slate-200 rounded-2xl"><table class="w-full text-left bg-white"><thead class="bg-slate-100 text-[11px] font-bold text-slate-600 uppercase"><tr><th class="p-3">Nom & Prénom</th><th class="p-3">Rôle</th><th class="p-3">Secteur</th><th class="p-3">Téléphone</th><th class="p-3 text-right">Actions</th></tr></thead><tbody>{adherents_table_rows}</tbody></table></div>
+                        <div class="flex flex-col sm:flex-row justify-between items-center mb-4 border-b pb-3 gap-3">
+                            <h2 class="text-base font-black text-slate-800">👥 Annuaire ({len(all_adherents)})</h2>
+                            <div class="flex gap-2 w-full sm:w-auto">
+                                <input type="text" id="search-annuaire" onkeyup="filterAnnuaire()" placeholder="Rechercher par nom, secteur..." class="px-3 py-1.5 text-xs border border-slate-300 rounded-xl w-full sm:w-64 bg-slate-50">
+                                <a href="/adherents/export-pdf" target="_blank" class="bg-red-600 hover:bg-red-700 text-white px-3.5 py-1.5 rounded-xl text-xs font-extrabold shadow-md transition whitespace-nowrap">📄 PDF</a>
+                            </div>
+                        </div>
+                        <div class="overflow-x-auto max-h-96 overflow-y-auto border border-slate-200 rounded-2xl">
+                            <table class="w-full text-left bg-white">
+                                <thead class="bg-slate-100 text-[11px] font-bold text-slate-600 uppercase">
+                                    <tr><th class="p-3">Nom & Prénom</th><th class="p-3">Rôle</th><th class="p-3">Secteur</th><th class="p-3">Téléphone</th><th class="p-3 text-right">Actions</th></tr>
+                                </thead>
+                                <tbody>{adherents_table_rows}</tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
 
                 <div id="tab-pointage" class="tab-content hidden space-y-6">
+                    {admin_event_pointage_html}
                     <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/80">
-                        <h2 class="text-base font-black mb-4 border-b pb-3 text-slate-800">📋 Pointage des Réunions</h2>
+                        <h2 class="text-base font-black mb-4 border-b pb-3 text-slate-800">📋 Historique des Pointages</h2>
                         <div class="overflow-x-auto max-h-96 overflow-y-auto border border-slate-200 rounded-2xl">
                             <table class="w-full text-left bg-white"><thead class="bg-slate-100 text-[11px] font-bold text-slate-600 uppercase"><tr><th class="p-3">Membre</th><th class="p-3">Événement</th><th class="p-3">Date</th><th class="p-3">Statut</th></tr></thead><tbody>{presences_table_rows or '<tr><td colspan="4" class="p-4 text-center text-sm text-slate-400">Aucun pointage enregistré.</td></tr>'}</tbody></table>
                         </div>
@@ -652,6 +808,7 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
                 </div>
 
                 <div id="tab-projets" class="tab-content hidden space-y-6">
+                    {admin_projet_form}
                     <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/80">
                         <h2 class="text-base font-black mb-4 border-b pb-3 text-slate-800">🤝 Demandes d'Aide</h2>
                         <ul class="max-h-60 overflow-y-auto pr-2">{aides_admin_html or '<p class="text-sm text-slate-400">Aucune demande.</p>'}</ul>
