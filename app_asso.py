@@ -13,7 +13,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="67.0")
+app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="68.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -412,13 +412,10 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
         is_admin = user.get('role') == 'admin'
         is_tresorier = user.get('role') in ['admin', 'tresorier']
 
-        # Démarrage officiel de l'application fixé au mois en cours (Septembre 2026)
-        # Aucun mois du passé (2025, etc.) ne sera affiché ni compté en retard.
         maintenant = datetime.datetime.now()
         annee_actuelle = maintenant.year
         mois_actuel = maintenant.month
 
-        # On prend uniquement le mois courant (ex: 2026-09) comme point de départ unique
         mois_passes = [f"{annee_actuelle}-{mois_actuel:02d}"]
 
         all_actifs = supabase.table("adherents").select("*").eq("statut", "actif").execute().data or []
@@ -777,6 +774,72 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
             </div>
             """
 
+        # Barre de navigation administrative affichée UNIQUEMENT si l'utilisateur est admin ou trésorier
+        navigation_onglets_html = ""
+        contenus_onglets_admin_html = ""
+
+        if is_tresorier:
+            navigation_onglets_html = f"""
+            <div class="sticky top-0 z-40 bg-white/95 backdrop-blur-md py-3 px-4 rounded-2xl shadow-md border border-slate-200/80 flex flex-wrap gap-2">
+                <button onclick="switchTab('tab-tresorerie')" id="btn-tab-tresorerie" class="tab-btn px-4 py-2 text-xs font-extrabold rounded-xl bg-slate-900 text-white shadow-md transition">💼 Trésorerie</button>
+                <button onclick="switchTab('tab-adherents')" id="btn-tab-adherents" class="tab-btn px-4 py-2 text-xs font-extrabold rounded-xl bg-white text-slate-700 border border-slate-200 shadow-sm hover:bg-slate-50 transition">👥 Annuaire</button>
+                <button onclick="switchTab('tab-pointage')" id="btn-tab-pointage" class="tab-btn px-4 py-2 text-xs font-extrabold rounded-xl bg-white text-slate-700 border border-slate-200 shadow-sm hover:bg-slate-50 transition">📋 Pointage</button>
+                <button onclick="switchTab('tab-projets')" id="btn-tab-projets" class="tab-btn px-4 py-2 text-xs font-extrabold rounded-xl bg-white text-slate-700 border border-slate-200 shadow-sm hover:bg-slate-50 transition">🚀 Projets</button>
+            </div>
+
+            <div id="tab-tresorerie" class="tab-content space-y-6">
+                {tresorerie_box_html}
+            </div>
+
+            <div id="tab-adherents" class="tab-content hidden space-y-6">
+                <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/80">
+                    <div class="flex flex-col sm:flex-row justify-between items-center mb-4 border-b pb-3 gap-3">
+                        <h2 class="text-base font-black text-slate-800">👥 Annuaire ({len(all_adherents)})</h2>
+                        <div class="flex gap-2 w-full sm:w-auto">
+                            <input type="text" id="search-annuaire" onkeyup="filterAnnuaire()" placeholder="Rechercher par nom, secteur, téléphone..." class="px-3 py-1.5 text-xs border border-slate-300 rounded-xl w-full sm:w-64 bg-slate-50">
+                            <a href="/adherents/export-pdf" target="_blank" class="bg-red-600 hover:bg-red-700 text-white px-3.5 py-1.5 rounded-xl text-xs font-extrabold shadow-md transition whitespace-nowrap">📄 PDF</a>
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto max-h-96 overflow-y-auto border border-slate-200 rounded-2xl">
+                        <table class="w-full text-left bg-white">
+                            <thead class="bg-slate-100 text-[11px] font-bold text-slate-600 uppercase">
+                                <tr><th class="p-3">Nom & Prénom</th><th class="p-3">Rôle</th><th class="p-3">Secteur</th><th class="p-3">Téléphone</th><th class="p-3 text-right">Actions</th></tr>
+                            </thead>
+                            <tbody>{adherents_table_rows}</tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div id="tab-pointage" class="tab-content hidden space-y-6">
+                {admin_event_pointage_html}
+                <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/80">
+                    <div class="flex justify-between items-center mb-4 border-b pb-3">
+                        <h2 class="text-base font-black text-slate-800">📋 Historique des Pointages</h2>
+                        <input type="text" id="search-pointage" onkeyup="filterPointage()" placeholder="Filtrer par nom, événement..." class="px-3 py-1 text-xs border border-slate-300 rounded-xl w-56 bg-slate-50">
+                    </div>
+                    <div class="overflow-x-auto max-h-96 overflow-y-auto border border-slate-200 rounded-2xl">
+                        <table class="w-full text-left bg-white"><thead class="bg-slate-100 text-[11px] font-bold text-slate-600 uppercase"><tr><th class="p-3">Membre</th><th class="p-3">Événement</th><th class="p-3">Date</th><th class="p-3">Statut</th></tr></thead><tbody id="presence-tbody">{presences_table_rows or '<tr><td colspan="4" class="p-4 text-center text-sm text-slate-400">Aucun pointage enregistré.</td></tr>'}</tbody></table>
+                    </div>
+                </div>
+            </div>
+
+            <div id="tab-projets" class="tab-content hidden space-y-6">
+                {admin_projet_form}
+                <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/80">
+                    <div class="flex justify-between items-center mb-4 border-b pb-3">
+                        <h2 class="text-base font-black text-slate-800">🤝 Demandes d'Aide</h2>
+                        <input type="text" id="search-projets" onkeyup="filterProjets()" placeholder="Filtrer demandes..." class="px-3 py-1 text-xs border border-slate-300 rounded-xl w-48 bg-slate-50">
+                    </div>
+                    <ul class="max-h-60 overflow-y-auto pr-2" id="aides-ul">{aides_admin_html or '<p class="text-sm text-slate-400">Aucune demande.</p>'}</ul>
+                </div>
+                <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/80">
+                    <h2 class="text-base font-black mb-4 border-b pb-3 text-slate-800">🚀 Projets de l'Association</h2>
+                    <div class="max-h-96 overflow-y-auto pr-2">{projets_cards_html or '<p class="text-xs text-slate-400">Aucun projet enregistré.</p>'}</div>
+                </div>
+            </div>
+            """
+
         return f"""
         <!DOCTYPE html>
         <html lang="fr">
@@ -787,7 +850,8 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
                 function switchTab(tabId) {{
                     let contents = document.getElementsByClassName('tab-content');
                     for (let c of contents) c.classList.add('hidden');
-                    document.getElementById(tabId).classList.remove('hidden');
+                    let target = document.getElementById(tabId);
+                    if (target) target.classList.remove('hidden');
                     let buttons = document.getElementsByClassName('tab-btn');
                     for (let b of buttons) {{
                         b.classList.remove('bg-slate-900', 'text-white', 'shadow-md');
@@ -799,84 +863,78 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
                         activeBtn.classList.add('bg-slate-900', 'text-white', 'shadow-md');
                     }}
                 }}
-                function openModal(id) {{ document.getElementById('modal-' + id).classList.remove('hidden'); }}
-                function closeModal(id) {{ document.getElementById('modal-' + id).classList.add('hidden'); }}
+                function openModal(id) {{ let m = document.getElementById('modal-' + id); if(m) m.classList.remove('hidden'); }}
+                function closeModal(id) {{ let m = document.getElementById('modal-' + id); if(m) m.classList.add('hidden'); }}
                 function filterAnnuaire() {{
-                    let input = document.getElementById('search-annuaire').value.toLowerCase();
+                    let input = document.getElementById('search-annuaire');
+                    if (!input) return;
+                    let val = input.value.toLowerCase();
                     let rows = document.getElementsByClassName('adherent-row');
                     for (let r of rows) {{
                         let nom = r.getAttribute('data-nom');
                         let secteur = r.getAttribute('data-secteur');
                         let tel = r.getAttribute('data-tel');
-                        if (nom.includes(input) || secteur.includes(input) || tel.includes(input)) {{
-                            r.style.display = "";
-                        }} else {{
-                            r.style.display = "none";
-                        }}
+                        r.style.display = (nom.includes(val) || secteur.includes(val) || tel.includes(val)) ? "" : "none";
                     }}
                 }}
                 function filterRetards() {{
-                    let input = document.getElementById('search-retards').value.toLowerCase();
+                    let input = document.getElementById('search-retards');
+                    if (!input) return;
+                    let val = input.value.toLowerCase();
                     let rows = document.getElementsByClassName('retard-row');
                     for (let r of rows) {{
                         let nom = r.getAttribute('data-nom');
                         let secteur = r.getAttribute('data-secteur');
-                        if (nom.includes(input) || secteur.includes(input)) {{
-                            r.style.display = "";
-                        }} else {{
-                            r.style.display = "none";
-                        }}
+                        r.style.display = (nom.includes(val) || secteur.includes(val)) ? "" : "none";
                     }}
                 }}
                 function filterPointage() {{
-                    let input = document.getElementById('search-pointage').value.toLowerCase();
+                    let input = document.getElementById('search-pointage');
+                    if (!input) return;
+                    let val = input.value.toLowerCase();
                     let rows = document.getElementsByClassName('presence-row');
                     for (let r of rows) {{
                         let nom = r.getAttribute('data-nom');
                         let ev = r.getAttribute('data-event');
-                        if (nom.includes(input) || ev.includes(input)) {{
-                            r.style.display = "";
-                        }} else {{
-                            r.style.display = "none";
-                        }}
+                        r.style.display = (nom.includes(val) || ev.includes(val)) ? "" : "none";
                     }}
                 }}
                 function filterProjets() {{
-                    let input = document.getElementById('search-projets').value.toLowerCase();
+                    let input = document.getElementById('search-projets');
+                    if (!input) return;
+                    let val = input.value.toLowerCase();
                     let items = document.getElementsByClassName('aide-item');
                     for (let i of items) {{
                         let motif = i.getAttribute('data-motif');
-                        if (motif.includes(input)) {{
-                            i.style.display = "";
-                        }} else {{
-                            i.style.display = "none";
-                        }}
+                        i.style.display = motif.includes(val) ? "" : "none";
                     }}
                 }}
                 function filterMobile() {{
-                    let input = document.getElementById('search-mobile').value.toLowerCase();
+                    let input = document.getElementById('search-mobile');
+                    if (!input) return;
+                    let val = input.value.toLowerCase();
                     let rows = document.getElementsByClassName('mobile-row');
                     for (let r of rows) {{
                         let nom = r.getAttribute('data-nom');
-                        if (nom.includes(input)) {{
-                            r.style.display = "";
-                        }} else {{
-                            r.style.display = "none";
-                        }}
+                        r.style.display = nom.includes(val) ? "" : "none";
                     }}
                 }}
                 function updateEventDate(select) {{
                     let opt = select.options[select.selectedIndex];
                     let dt = opt.getAttribute('data-date');
                     if (dt) {{
-                        document.getElementById('input-event-date').value = dt.substring(0, 10);
+                        let inputDate = document.getElementById('input-event-date');
+                        if (inputDate) inputDate.value = dt.substring(0, 10);
                     }}
                 }}
                 function handleScanPhoto(input) {{
                     if (input.files && input.files[0]) {{
-                        document.getElementById('scan-result-text').innerText = "Photo scannée avec succès ! Prêt pour le pointage.";
-                        document.getElementById('scan-result-text').classList.remove('text-emerald-800');
-                        document.getElementById('scan-result-text').classList.add('text-blue-700', 'font-black');
+                        let txt = document.getElementById('scan-result-text');
+                        if (txt) {{
+                            txt.innerText = "Photo scannée avec succès ! Prêt pour le pointage.";
+                            txt.classList.remove('text-emerald-800');
+                            txt.classList.add('text-blue-700', 'font-black');
+                        }}
                     }}
                 }}
             </script>
@@ -896,64 +954,7 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
 
                 {member_specific_html}
 
-                <div class="sticky top-0 z-40 bg-white/95 backdrop-blur-md py-3 px-4 rounded-2xl shadow-md border border-slate-200/80 flex flex-wrap gap-2">
-                    <button onclick="switchTab('tab-tresorerie')" id="btn-tab-tresorerie" class="tab-btn px-4 py-2 text-xs font-extrabold rounded-xl bg-slate-900 text-white shadow-md transition">💼 Trésorerie</button>
-                    <button onclick="switchTab('tab-adherents')" id="btn-tab-adherents" class="tab-btn px-4 py-2 text-xs font-extrabold rounded-xl bg-white text-slate-700 border border-slate-200 shadow-sm hover:bg-slate-50 transition">👥 Annuaire</button>
-                    <button onclick="switchTab('tab-pointage')" id="btn-tab-pointage" class="tab-btn px-4 py-2 text-xs font-extrabold rounded-xl bg-white text-slate-700 border border-slate-200 shadow-sm hover:bg-slate-50 transition">📋 Pointage</button>
-                    <button onclick="switchTab('tab-projets')" id="btn-tab-projets" class="tab-btn px-4 py-2 text-xs font-extrabold rounded-xl bg-white text-slate-700 border border-slate-200 shadow-sm hover:bg-slate-50 transition">🚀 Projets</button>
-                </div>
-
-                <div id="tab-tresorerie" class="tab-content space-y-6">
-                    {tresorerie_box_html}
-                </div>
-
-                <div id="tab-adherents" class="tab-content hidden space-y-6">
-                    <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/80">
-                        <div class="flex flex-col sm:flex-row justify-between items-center mb-4 border-b pb-3 gap-3">
-                            <h2 class="text-base font-black text-slate-800">👥 Annuaire ({len(all_adherents)})</h2>
-                            <div class="flex gap-2 w-full sm:w-auto">
-                                <input type="text" id="search-annuaire" onkeyup="filterAnnuaire()" placeholder="Rechercher par nom, secteur, téléphone..." class="px-3 py-1.5 text-xs border border-slate-300 rounded-xl w-full sm:w-64 bg-slate-50">
-                                <a href="/adherents/export-pdf" target="_blank" class="bg-red-600 hover:bg-red-700 text-white px-3.5 py-1.5 rounded-xl text-xs font-extrabold shadow-md transition whitespace-nowrap">📄 PDF</a>
-                            </div>
-                        </div>
-                        <div class="overflow-x-auto max-h-96 overflow-y-auto border border-slate-200 rounded-2xl">
-                            <table class="w-full text-left bg-white">
-                                <thead class="bg-slate-100 text-[11px] font-bold text-slate-600 uppercase">
-                                    <tr><th class="p-3">Nom & Prénom</th><th class="p-3">Rôle</th><th class="p-3">Secteur</th><th class="p-3">Téléphone</th><th class="p-3 text-right">Actions</th></tr>
-                                </thead>
-                                <tbody>{adherents_table_rows}</tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-
-                <div id="tab-pointage" class="tab-content hidden space-y-6">
-                    {admin_event_pointage_html}
-                    <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/80">
-                        <div class="flex justify-between items-center mb-4 border-b pb-3">
-                            <h2 class="text-base font-black text-slate-800">📋 Historique des Pointages</h2>
-                            <input type="text" id="search-pointage" onkeyup="filterPointage()" placeholder="Filtrer par nom, événement..." class="px-3 py-1 text-xs border border-slate-300 rounded-xl w-56 bg-slate-50">
-                        </div>
-                        <div class="overflow-x-auto max-h-96 overflow-y-auto border border-slate-200 rounded-2xl">
-                            <table class="w-full text-left bg-white"><thead class="bg-slate-100 text-[11px] font-bold text-slate-600 uppercase"><tr><th class="p-3">Membre</th><th class="p-3">Événement</th><th class="p-3">Date</th><th class="p-3">Statut</th></tr></thead><tbody id="presence-tbody">{presences_table_rows or '<tr><td colspan="4" class="p-4 text-center text-sm text-slate-400">Aucun pointage enregistré.</td></tr>'}</tbody></table>
-                        </div>
-                    </div>
-                </div>
-
-                <div id="tab-projets" class="tab-content hidden space-y-6">
-                    {admin_projet_form}
-                    <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/80">
-                        <div class="flex justify-between items-center mb-4 border-b pb-3">
-                            <h2 class="text-base font-black text-slate-800">🤝 Demandes d'Aide</h2>
-                            <input type="text" id="search-projets" onkeyup="filterProjets()" placeholder="Filtrer demandes..." class="px-3 py-1 text-xs border border-slate-300 rounded-xl w-48 bg-slate-50">
-                        </div>
-                        <ul class="max-h-60 overflow-y-auto pr-2" id="aides-ul">{aides_admin_html or '<p class="text-sm text-slate-400">Aucune demande.</p>'}</ul>
-                    </div>
-                    <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/80">
-                        <h2 class="text-base font-black mb-4 border-b pb-3 text-slate-800">🚀 Projets de l'Association</h2>
-                        <div class="max-h-96 overflow-y-auto pr-2">{projets_cards_html or '<p class="text-xs text-slate-400">Aucun projet enregistré.</p>'}</div>
-                    </div>
-                </div>
+                {navigation_onglets_html}
 
                 {modals_html}
             </div>
