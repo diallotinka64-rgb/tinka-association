@@ -13,7 +13,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="60.0")
+app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="60.1")
 
 app.add_middleware(
     CORSMiddleware,
@@ -384,7 +384,7 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
         param_res = supabase.table("parametres").select("solde_initial").eq("id", 1).execute()
         solde_initial = param_res.data[0]['solde_initial'] if param_res.data else 0.0
 
-        cotisations_caisse = sum([c['montant'] for c in all_cotisations if "regularisation" not in str(c.get('mode_paiement', '')) and c.get('statut_paiement', 'valide') == 'valide'])
+        cotisations_caisse = sum([c['montant'] for c in all_cotisations if "regularisation" not in str(c.get('mode_paiement', '')) and c.get('statut_paiement', 'valide'] == 'valide'])
         total_aides_approuvees = sum([ai['montant_demande'] for ai in all_aides if ai.get('statut_validation') == 'approuve'])
         total_dec = sum([d['montant'] for d in all_decaissements])
         
@@ -412,7 +412,7 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
 
         suivi_retards_html = ""
         for a in all_actifs:
-            cotis_membre = [c['periode'] for c in all_cotisations if c.get('adherent_id') == a['id'] and c.get('statut_paiement'] == 'valide']
+            cotis_membre = [c['periode'] for c in all_cotisations if c.get('adherent_id') == a['id'] and c.get('statut_paiement') == 'valide']
             mois_manquants = [m for m in mois_12 if m not in cotis_membre]
             statut_ajour = "<span class='text-emerald-700 font-extrabold bg-emerald-50 px-2.5 py-1 rounded-full text-xs'>À jour</span>" if not mois_manquants else f"<span class='text-red-700 font-extrabold bg-red-50 px-2.5 py-1 rounded-full text-xs'>Retard ({len(mois_manquants)} mois)</span>"
             suivi_retards_html += f"<li class='py-2.5 border-b border-slate-100 flex justify-between items-center text-sm'><span><b>{a.get('prenom','')} {a.get('nom','')}</b> <span class='text-xs text-slate-400 font-medium'>({a.get('secteur','')})</span></span> {statut_ajour}</li>"
@@ -531,7 +531,6 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
         </div>
         """
 
-        # BLOCS SPÉCIFIQUES AUX MEMBRES (Masqués pour l'Admin / Trésorier)
         member_specific_html = ""
         if not is_tresorier:
             cotis_perso = [c for c in all_cotisations if c.get('adherent_id') == user['id']]
@@ -606,7 +605,6 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
         </head>
         <body class="bg-gradient-to-br from-slate-50 via-slate-100 to-emerald-50 text-slate-800 font-sans min-h-screen py-6 px-4">
             <div class="max-w-4xl mx-auto space-y-6">
-                <!-- En-tête profil -->
                 <div class="bg-white p-5 rounded-3xl shadow-sm border border-slate-200/80 flex justify-between items-center backdrop-blur-md">
                     <div class="flex items-center gap-3">
                         <div class="w-11 h-11 rounded-2xl bg-emerald-100 flex items-center justify-center text-emerald-800 font-black text-lg shadow-sm">{user.get('prenom','M')[0]}</div>
@@ -618,10 +616,8 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
                     <a href="/" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md transition">Déconnexion</a>
                 </div>
 
-                <!-- SECTIONS SPÉCIFIQUES AUX MEMBRES UNIQUEMENT -->
                 {member_specific_html}
 
-                <!-- BARRE DE NAVIGATION FIGÉE (STICKY HEADER) -->
                 <div class="sticky top-0 z-40 bg-white/95 backdrop-blur-md py-3 px-4 rounded-2xl shadow-md border border-slate-200/80 flex flex-wrap gap-2">
                     <button onclick="switchTab('tab-tresorerie')" id="btn-tab-tresorerie" class="tab-btn px-4 py-2 text-xs font-extrabold rounded-xl bg-slate-900 text-white shadow-md transition">💼 Trésorerie</button>
                     <button onclick="switchTab('tab-adherents')" id="btn-tab-adherents" class="tab-btn px-4 py-2 text-xs font-extrabold rounded-xl bg-white text-slate-700 border border-slate-200 shadow-sm hover:bg-slate-50 transition">👥 Annuaire</button>
@@ -629,7 +625,6 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
                     <button onclick="switchTab('tab-projets')" id="btn-tab-projets" class="tab-btn px-4 py-2 text-xs font-extrabold rounded-xl bg-white text-slate-700 border border-slate-200 shadow-sm hover:bg-slate-50 transition">🚀 Projets</button>
                 </div>
 
-                <!-- ONGLET 1 : TRÉSORERIE -->
                 <div id="tab-tresorerie" class="tab-content space-y-6">
                     {tresorerie_box_html}
                     <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/80">
@@ -640,7 +635,6 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
                     </div>
                 </div>
 
-                <!-- ONGLET 2 : ANNUAIRE -->
                 <div id="tab-adherents" class="tab-content hidden space-y-6">
                     <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/80">
                         <div class="flex justify-between items-center mb-4 border-b pb-3"><h2 class="text-base font-black text-slate-800">👥 Annuaire ({len(all_adherents)})</h2><a href="/adherents/export-pdf" target="_blank" class="bg-red-600 hover:bg-red-700 text-white px-3.5 py-2 rounded-xl text-xs font-extrabold shadow-md transition">📄 Exporter PDF</a></div>
@@ -648,7 +642,6 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
                     </div>
                 </div>
 
-                <!-- ONGLET 3 : POINTAGE -->
                 <div id="tab-pointage" class="tab-content hidden space-y-6">
                     <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/80">
                         <h2 class="text-base font-black mb-4 border-b pb-3 text-slate-800">📋 Pointage des Réunions</h2>
@@ -658,7 +651,6 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
                     </div>
                 </div>
 
-                <!-- ONGLET 4 : PROJETS & AIDES -->
                 <div id="tab-projets" class="tab-content hidden space-y-6">
                     <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/80">
                         <h2 class="text-base font-black mb-4 border-b pb-3 text-slate-800">🤝 Demandes d'Aide</h2>
