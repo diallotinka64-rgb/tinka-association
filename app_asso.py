@@ -13,7 +13,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="60.0")
+app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="59.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -280,36 +280,6 @@ def ajouter_projet(
         pass
     return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
 
-@app.api_route("/evenements-form", methods=["GET", "POST"], response_class=HTMLResponse)
-@app.api_route("/evenements-form/", methods=["GET", "POST"], response_class=HTMLResponse)
-def ajouter_evenement(
-    user_id: Optional[int] = Form(None), titre: Optional[str] = Form(None), description: Optional[str] = Form(None),
-    date_evenement: Optional[str] = Form(None), lieu: Optional[str] = Form(None), type_evenement: Optional[str] = Form(None), statut: Optional[str] = Form(None)
-):
-    if not user_id:
-        return RedirectResponse(url="/", status_code=303)
-    try:
-        supabase.table("evenements").insert({
-            "titre": titre or "", "description": description or "", "date_evenement": date_evenement or "",
-            "lieu": lieu or "", "type_evenement": type_evenement or "Reunion", "statut": statut or "Prevu"
-        }).execute()
-    except Exception:
-        pass
-    return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
-
-@app.api_route("/presences-form", methods=["GET", "POST"], response_class=HTMLResponse)
-@app.api_route("/presences-form/", methods=["GET", "POST"], response_class=HTMLResponse)
-def enregistrer_presence(user_id: Optional[int] = Form(None), adherent_id: Optional[int] = Form(None), evenement_titre: Optional[str] = Form(None), statut_presence: Optional[str] = Form(None), date_reunion: Optional[str] = Form(None)):
-    if user_id and adherent_id:
-        try:
-            supabase.table("presences_association").insert({
-                "adherent_id": adherent_id, "evenement_titre": evenement_titre or "", "statut_presence": statut_presence or "Present", "date_reunion": date_reunion or ""
-            }).execute()
-        except Exception:
-            pass
-        return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
-    return RedirectResponse(url="/", status_code=303)
-
 @app.get("/adherents/export-pdf")
 def export_adherents_pdf():
     res = supabase.table("adherents").select("*").order("nom").execute()
@@ -414,7 +384,7 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
         param_res = supabase.table("parametres").select("solde_initial").eq("id", 1).execute()
         solde_initial = param_res.data[0]['solde_initial'] if param_res.data else 0.0
 
-        cotisations_caisse = sum([c['montant'] for c in all_cotisations if "regularisation" not in str(c.get('mode_paiement', '')) and c.get('statut_paiement', 'valide'] == 'valide'])
+        cotisations_caisse = sum([c['montant'] for c in all_cotisations if "regularisation" not in str(c.get('mode_paiement', '')) and c.get('statut_paiement', 'valide') == 'valide'])
         total_aides_approuvees = sum([ai['montant_demande'] for ai in all_aides if ai.get('statut_validation') == 'approuve'])
         total_dec = sum([d['montant'] for d in all_decaissements])
         
@@ -436,23 +406,6 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
                     <div><b>🎯 Objectifs :</b> {pr.get('objectifs', 'Non spécifié')}</div>
                     <div><b>📅 Planning :</b> {pr.get('chronologie', 'Non spécifié')}</div>
                     <div class="font-extrabold text-emerald-700">💰 Budget estimé : {formater_montant(pr.get('cout', 0))} CFA</div>
-                </div>
-            </div>
-            """
-
-        evenements_cards_html = ""
-        for ev in all_evenements:
-            evenements_cards_html += f"""
-            <div class="bg-white p-5 rounded-2xl border border-slate-200/80 mb-4 shadow-sm">
-                <div class="flex justify-between items-start gap-2 mb-2">
-                    <h4 class="font-black text-base text-teal-950">{ev.get('titre', '')}</h4>
-                    <span class="text-[11px] font-extrabold px-2.5 py-1 rounded-full bg-teal-50 text-teal-700 uppercase">{ev.get('type_evenement', 'Réunion')}</span>
-                </div>
-                <p class="text-xs text-slate-600 mb-3 leading-relaxed">{ev.get('description', '')}</p>
-                <div class="text-xs text-slate-600 space-y-1.5 bg-slate-50 p-3 rounded-xl border border-slate-100">
-                    <div><b>📅 Date :</b> {formater_date(ev.get('date_evenement', ''))}</div>
-                    <div><b>📍 Lieu :</b> {ev.get('lieu', 'Non spécifié')}</div>
-                    <div><b>📌 Statut :</b> <span class="font-bold text-emerald-700">{ev.get('statut', 'Prévu')}</span></div>
                 </div>
             </div>
             """
@@ -517,9 +470,7 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
             """
 
         presences_table_rows = "".join([f"<tr class='border-b text-sm'><td class='p-3 font-bold'>{p.get('adherents',{}).get('prenom','')} {p.get('adherents',{}).get('nom','')}</td><td class='p-3 text-slate-700'>{p.get('evenement_titre','')}</td><td class='p-3 text-slate-500'>{formater_date(p.get('date_reunion',''))}</td><td class='p-3'><span class='text-xs px-2.5 py-1 rounded-full font-extrabold bg-emerald-50 text-emerald-700'>{p.get('statut_presence','')}</span></td></tr>" for p in all_presences])
-        options_presence_adherents = "".join([f"<option value='{a['id']}'>{a.get('prenom','')} {a.get('nom','')} — {a.get('secteur','')}</option>" for a in all_actifs])
-        options_evenements_titres = "".join([f"<option value='{ev.get('titre','')}'>{ev.get('titre','')}</option>" for ev in all_evenements]) or "<option value='Réunion Générale'>Réunion Générale</option>"
-
+        
         paiements_mobiles_admin = [c for c in all_cotisations if "mobile_" in str(c.get('mode_paiement', ''))]
         paiements_mobiles_rows = ""
         for pm in paiements_mobiles_admin:
@@ -590,43 +541,6 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
                 badge_recu = "<span class='bg-amber-100 text-amber-800 px-3 py-1 rounded-xl text-xs font-bold'>⏳ En attente de validation admin</span>"
             mois_payes_html += f"<li class='py-3 border-b border-slate-100 text-sm flex justify-between items-center'><span>Mois de <b>{c.get('periode','')}</b> : <span class='text-emerald-700 font-bold'>{formater_montant(c.get('montant',0))} CFA</span></span> {badge_recu}</li>"
 
-        # Formulaire de planification d'événement (réservé aux gestionnaires ou ouvert à tous selon besoin)
-        form_evenement_html = f"""
-        <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/80 mb-6">
-            <h2 class="text-base font-black mb-4 border-b pb-3 text-slate-800">📅 Planifier un Nouvel Événement / Réunion</h2>
-            <form action="/evenements-form" method="POST" class="space-y-3.5">
-                <input type="hidden" name="user_id" value="{user['id']}">
-                <div class="grid grid-cols-2 gap-3">
-                    <div><label class="block text-xs font-bold mb-1 text-slate-600">Titre de l'événement</label><input type="text" name="titre" required class="w-full p-2.5 text-sm border border-slate-300 rounded-xl" placeholder="ex: Assemblée Générale"></div>
-                    <div><label class="block text-xs font-bold mb-1 text-slate-600">Date de l'événement</label><input type="date" name="date_evenement" required class="w-full p-2.5 text-sm border border-slate-300 rounded-xl"></div>
-                </div>
-                <div class="grid grid-cols-2 gap-3">
-                    <div><label class="block text-xs font-bold mb-1 text-slate-600">Lieu</label><input type="text" name="lieu" required class="w-full p-2.5 text-sm border border-slate-300 rounded-xl" placeholder="ex: Siège de l'association"></div>
-                    <div><label class="block text-xs font-bold mb-1 text-slate-600">Type</label><select name="type_evenement" class="w-full p-2.5 text-sm border border-slate-300 rounded-xl bg-white"><option value="Reunion">Réunion</option><option value="Assemblee">Assemblée Générale</option><option value="Ceremonie">Cérémonie</option><option value="Autre">Autre</option></select></div>
-                </div>
-                <div><label class="block text-xs font-bold mb-1 text-slate-600">Description</label><textarea name="description" rows="2" required class="w-full p-2.5 text-sm border border-slate-300 rounded-xl" placeholder="Détails de la rencontre..."></textarea></div>
-                <button type="submit" class="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-2.5 rounded-xl text-sm shadow-md transition">Enregistrer et planifier l'événement</button>
-            </form>
-        </div>
-        """ if is_tresorier else ""
-
-        # Formulaire de pointage (réservé aux gestionnaires)
-        form_pointage_html = f"""
-        <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/80 mb-6">
-            <h2 class="text-base font-black mb-4 border-b pb-3 text-slate-800">📋 Enregistrer un Pointage de Présence</h2>
-            <form action="/presences-form" method="POST" class="space-y-4">
-                <input type="hidden" name="user_id" value="{user['id']}">
-                <div class="grid grid-cols-2 gap-3">
-                    <div><label class="block text-xs font-bold mb-1 text-slate-600">Événement planifié</label><select name="evenement_titre" required class="w-full p-2.5 border border-slate-300 rounded-xl bg-white text-sm shadow-sm">{options_evenements_titres}</select></div>
-                    <div><label class="block text-xs font-bold mb-1 text-slate-600">Date du pointage</label><input type="date" name="date_reunion" required class="w-full p-2.5 border border-slate-300 rounded-xl bg-white text-sm shadow-sm"></div>
-                </div>
-                <div><label class="block text-xs font-bold mb-1 text-slate-600">Membre concerné</label><select name="adherent_id" required class="w-full p-2.5 border border-slate-300 rounded-xl bg-white text-sm shadow-sm" size="4">{options_presence_adherents}</select></div>
-                <div><label class="block text-xs font-bold mb-1 text-slate-600">Statut de présence</label><select name="statut_presence" required class="w-full p-2.5 border border-slate-300 rounded-xl bg-white text-sm shadow-sm"><option value="Present">🟢 Présent(e)</option><option value="Absent_excuse">🟡 Excusé(e)</option><option value="Absent">🔴 Absent(e)</option></select></div>
-                <button type="submit" class="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-3 rounded-xl text-sm shadow-md transition">Enregistrer la présence</button>
-            </form>
-        </div>
-        """ if is_tresorier else ""
-
         return f"""
         <!DOCTYPE html>
         <html lang="fr">
@@ -655,7 +569,6 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
         </head>
         <body class="bg-gradient-to-br from-slate-50 via-slate-100 to-emerald-50 text-slate-800 font-sans min-h-screen py-6 px-4">
             <div class="max-w-4xl mx-auto space-y-6">
-                <!-- En-tête profil -->
                 <div class="bg-white p-5 rounded-3xl shadow-sm border border-slate-200/80 flex justify-between items-center backdrop-blur-md">
                     <div class="flex items-center gap-3">
                         <div class="w-11 h-11 rounded-2xl bg-emerald-100 flex items-center justify-center text-emerald-800 font-black text-lg shadow-sm">{user.get('prenom','M')[0]}</div>
@@ -667,7 +580,6 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
                     <a href="/" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md transition">Déconnexion</a>
                 </div>
 
-                <!-- Carte résumé membre -->
                 <div class="bg-gradient-to-br from-slate-900 via-emerald-950 to-slate-900 text-white p-6 rounded-3xl shadow-xl flex justify-between items-center relative overflow-hidden">
                     <div>
                         <span class="bg-emerald-500/20 text-emerald-300 text-[10px] font-extrabold px-2.5 py-1 rounded-full uppercase tracking-widest border border-emerald-500/30">Mon Compte</span>
@@ -677,7 +589,6 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
                     <div class="bg-white p-2 rounded-2xl shadow-lg"><img src="data:image/png;base64,{qr_perso_b64}" class="w-16 h-16 rounded-xl"></div>
                 </div>
 
-                <!-- FORMULAIRE PAIEMENT MOBILE -->
                 <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/85">
                     <h2 class="text-base font-black mb-4 border-b pb-3 text-slate-800">📱 Déclarer un Paiement Mobile</h2>
                     <form action="/paiement-mobile-form" method="POST" class="space-y-3.5">
@@ -696,21 +607,18 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
                     </form>
                 </div>
 
-                <!-- MES COTISATIONS -->
                 <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/85">
                     <h2 class="text-base font-black mb-4 border-b pb-3 text-slate-800">📋 Mes Cotisations & Reçus</h2>
                     <ul class="max-h-60 overflow-y-auto pr-2">{mois_payes_html or '<p class="text-sm text-slate-400">Aucun versement enregistré pour le moment.</p>'}</ul>
                 </div>
 
-                <!-- BARRE DE NAVIGATION FIGÉE (STICKY HEADER) -->
                 <div class="sticky top-0 z-40 bg-white/95 backdrop-blur-md py-3 px-4 rounded-2xl shadow-md border border-slate-200/80 flex flex-wrap gap-2">
                     <button onclick="switchTab('tab-tresorerie')" id="btn-tab-tresorerie" class="tab-btn px-4 py-2 text-xs font-extrabold rounded-xl bg-slate-900 text-white shadow-md transition">💼 Trésorerie</button>
                     <button onclick="switchTab('tab-adherents')" id="btn-tab-adherents" class="tab-btn px-4 py-2 text-xs font-extrabold rounded-xl bg-white text-slate-700 border border-slate-200 shadow-sm hover:bg-slate-50 transition">👥 Annuaire</button>
-                    <button onclick="switchTab('tab-pointage')" id="btn-tab-pointage" class="tab-btn px-4 py-2 text-xs font-extrabold rounded-xl bg-white text-slate-700 border border-slate-200 shadow-sm hover:bg-slate-50 transition">📋 Pointage & Événements</button>
+                    <button onclick="switchTab('tab-pointage')" id="btn-tab-pointage" class="tab-btn px-4 py-2 text-xs font-extrabold rounded-xl bg-white text-slate-700 border border-slate-200 shadow-sm hover:bg-slate-50 transition">📋 Pointage</button>
                     <button onclick="switchTab('tab-projets')" id="btn-tab-projets" class="tab-btn px-4 py-2 text-xs font-extrabold rounded-xl bg-white text-slate-700 border border-slate-200 shadow-sm hover:bg-slate-50 transition">🚀 Projets</button>
                 </div>
 
-                <!-- ONGLET 1 : TRÉSORERIE -->
                 <div id="tab-tresorerie" class="tab-content space-y-6">
                     {tresorerie_box_html}
                     <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/80">
@@ -721,7 +629,6 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
                     </div>
                 </div>
 
-                <!-- ONGLET 2 : ANNUAIRE -->
                 <div id="tab-adherents" class="tab-content hidden space-y-6">
                     <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/80">
                         <div class="flex justify-between items-center mb-4 border-b pb-3"><h2 class="text-base font-black text-slate-800">👥 Annuaire ({len(all_adherents)})</h2><a href="/adherents/export-pdf" target="_blank" class="bg-red-600 hover:bg-red-700 text-white px-3.5 py-2 rounded-xl text-xs font-extrabold shadow-md transition">📄 Exporter PDF</a></div>
@@ -729,25 +636,15 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
                     </div>
                 </div>
 
-                <!-- ONGLET 3 : POINTAGE & ÉVÉNEMENTS -->
                 <div id="tab-pointage" class="tab-content hidden space-y-6">
-                    {form_evenement_html}
-                    {form_pointage_html}
-                    
-                    <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/80 mb-6">
-                        <h2 class="text-base font-black mb-4 border-b pb-3 text-slate-800">📅 Événements Planifiés ({len(all_evenements)})</h2>
-                        <div class="max-h-96 overflow-y-auto pr-2">{evenements_cards_html or '<p class="text-xs text-slate-400">Aucun événement planifié.</p>'}</div>
-                    </div>
-
                     <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/80">
-                        <h2 class="text-base font-black mb-4 border-b pb-3 text-slate-800">📋 Historique des Présences</h2>
+                        <h2 class="text-base font-black mb-4 border-b pb-3 text-slate-800">📋 Pointage des Réunions</h2>
                         <div class="overflow-x-auto max-h-96 overflow-y-auto border border-slate-200 rounded-2xl">
                             <table class="w-full text-left bg-white"><thead class="bg-slate-100 text-[11px] font-bold text-slate-600 uppercase"><tr><th class="p-3">Membre</th><th class="p-3">Événement</th><th class="p-3">Date</th><th class="p-3">Statut</th></tr></thead><tbody>{presences_table_rows or '<tr><td colspan="4" class="p-4 text-center text-sm text-slate-400">Aucun pointage enregistré.</td></tr>'}</tbody></table>
                         </div>
                     </div>
                 </div>
 
-                <!-- ONGLET 4 : PROJETS & AIDES -->
                 <div id="tab-projets" class="tab-content hidden space-y-6">
                     <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/80">
                         <h2 class="text-base font-black mb-4 border-b pb-3 text-slate-800">🤝 Demandes d'Aide</h2>
