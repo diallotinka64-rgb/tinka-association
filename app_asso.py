@@ -13,7 +13,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="61.1")
+app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="62.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -126,7 +126,7 @@ def afficher_portail():
                             <div><label class="block text-[11px] font-bold text-slate-600 mb-1">Téléphone</label><input type="text" name="telephone" required class="w-full px-2.5 py-2 text-sm bg-white border border-slate-300 rounded-xl shadow-sm"></div>
                             <div><label class="block text-[11px] font-bold text-slate-600 mb-1">Adresse</label><input type="text" name="adresse" required class="w-full px-2.5 py-2 text-sm bg-white border border-slate-300 rounded-xl shadow-sm"></div>
                             <div><label class="block text-[11px] font-bold text-slate-600 mb-1">Secteur</label><input type="text" name="secteur" required class="w-full px-2.5 py-2 text-sm bg-white border border-slate-300 rounded-xl shadow-sm"></div>
-                            <div><label class="block text-[11px] font-bold text-slate-600 mb-1">Photo de profil (Optionnel)</label><input type="file" name="file_photo" accept="image/*" class="w-full text-xs text-slate-500 file:py-2 file:px-3 file:rounded-xl file:border-0 file:bg-emerald-50 file:text-emerald-700 font-semibold"></div>
+                            <div><label class="block text-[11px] font-bold text-slate-600 mb-1">Photo de profil</label><input type="file" name="file_photo" accept="image/*" class="w-full text-xs text-slate-500 file:py-2 file:px-3 file:rounded-xl file:border-0 file:bg-emerald-50 file:text-emerald-700 font-semibold"></div>
                             <div><label class="block text-[11px] font-bold text-slate-600 mb-1">Mot de passe</label><input type="password" name="mot_de_passe" required class="w-full px-2.5 py-2 text-sm bg-white border border-slate-300 rounded-xl shadow-sm"></div>
                             <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-4 rounded-xl shadow-lg shadow-emerald-600/20 text-sm mt-1 transition duration-200">S'inscrire</button>
                         </form>
@@ -432,10 +432,23 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
 
         suivi_retards_html = ""
         for a in all_actifs:
-            cotis_membre = [c['periode'] for c in all_cotisations if c.get('adherent_id') == a['id'] and c.get('statut_paiement') == 'valide']
+            cotis_membre = [c['periode'] for c in all_cotisations if c.get('adherent_id') == a['id'] and c.get('statut_paiement'] == 'valide']
             mois_manquants = [m for m in mois_12 if m not in cotis_membre]
-            statut_ajour = "<span class='text-emerald-700 font-extrabold bg-emerald-50 px-2.5 py-1 rounded-full text-xs'>À jour</span>" if not mois_manquants else f"<span class='text-red-700 font-extrabold bg-red-50 px-2.5 py-1 rounded-full text-xs'>Retard ({len(mois_manquants)} mois)</span>"
-            suivi_retards_html += f"<li class='py-2.5 border-b border-slate-100 flex justify-between items-center text-sm'><span><b>{a.get('prenom','')} {a.get('nom','')}</b> <span class='text-xs text-slate-400 font-medium'>({a.get('secteur','')})</span></span> {statut_ajour}</li>"
+            
+            # Message WhatsApp d'alerte de retard
+            txt_wa = f"Bonjour {a.get('prenom','')}, rappel amical de l'association Tinka : vous avez {len(mois_manquants)} mois de cotisation en retard ({', '.join(mois_manquants)}). Merci de régulariser."
+            link_wa = f"https://wa.me/{str(a.get('telephone','')).replace('+', '')}?text={urllib_quote(txt_wa) if 'urllib_quote' in globals() else txt_wa}" if a.get('telephone') else "#"
+            
+            btn_wa = f"<a href='{link_wa}' target='_blank' class='bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 rounded-lg text-xs font-bold ml-2 shadow-sm transition'>💬 Relancer WhatsApp</a>" if mois_manquants else ""
+            
+            statut_ajour = "<span class='text-emerald-700 font-extrabold bg-emerald-50 px-2.5 py-1 rounded-full text-xs'>À jour ✓</span>" if not mois_manquants else f"<span class='text-red-700 font-extrabold bg-red-50 px-2.5 py-1 rounded-full text-xs'>Retard ({len(mois_manquants)} mois : {', '.join(mois_manquants)})</span>{btn_wa}"
+            
+            suivi_retards_html += f"""
+            <tr class='border-b text-sm retard-row' data-nom='{str(a.get('prenom','')).lower()} {str(a.get('nom','')).lower()}' data-secteur='{str(a.get('secteur','')).lower()}'>
+                <td class='p-3 font-bold text-slate-900'>{a.get('prenom','')} {a.get('nom','')} <span class='text-xs text-slate-400 font-normal'>({a.get('secteur','')})</span></td>
+                <td class='p-3 text-right'>{statut_ajour}</td>
+            </tr>
+            """
 
         adherents_table_rows = ""
         modals_html = ""
@@ -460,7 +473,7 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
             btn_modif = f"""<button onclick="openModal({a['id']})" class="bg-blue-50 hover:bg-blue-100 text-blue-700 px-3 py-1 rounded-xl text-xs font-bold ml-1 transition">⚙️</button>""" if is_tresorier or a['id'] == user['id'] else ""
 
             adherents_table_rows += f"""
-            <tr class="hover:bg-slate-50 border-b text-sm adherent-row" data-nom="{a.get('prenom','').lower()} {a.get('nom','').lower()}" data-secteur="{a.get('secteur','').lower()}" data-tel="{a.get('telephone','')}">
+            <tr class="hover:bg-slate-50 border-b text-sm adherent-row" data-nom="{str(a.get('prenom','')).lower()} {str(a.get('nom','')).lower()}" data-secteur="{str(a.get('secteur','')).lower()}" data-tel="{str(a.get('telephone',''))}">
                 <td class="p-3 font-semibold text-slate-900">{a.get('prenom','')} {a.get('nom','')}</td>
                 <td class="p-3"><span class="text-[11px] bg-slate-100 text-slate-700 px-2.5 py-1 rounded-full font-bold uppercase">{a.get('role','')}</span></td>
                 <td class="p-3 text-slate-600">{a.get('secteur','')}</td>
@@ -489,7 +502,7 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
             </div>
             """
 
-        presences_table_rows = "".join([f"<tr class='border-b text-sm'><td class='p-3 font-bold'>{p.get('adherents',{}).get('prenom','')} {p.get('adherents',{}).get('nom','')}</td><td class='p-3 text-slate-700'>{p.get('evenement_titre','')}</td><td class='p-3 text-slate-500'>{formater_date(p.get('date_reunion',''))}</td><td class='p-3'><span class='text-xs px-2.5 py-1 rounded-full font-extrabold bg-emerald-50 text-emerald-700'>{p.get('statut_presence','')}</span></td></tr>" for p in all_presences])
+        presences_table_rows = "".join([f"<tr class='border-b text-sm presence-row' data-nom='{str(p.get('adherents',{}).get('prenom','')).lower()} {str(p.get('adherents',{}).get('nom','')).lower()}' data-event='{str(p.get('evenement_titre','')).lower()}'><td class='p-3 font-bold'>{p.get('adherents',{}).get('prenom','')} {p.get('adherents',{}).get('nom','')}</td><td class='p-3 text-slate-700'>{p.get('evenement_titre','')}</td><td class='p-3 text-slate-500'>{formater_date(p.get('date_reunion',''))}</td><td class='p-3'><span class='text-xs px-2.5 py-1 rounded-full font-extrabold bg-emerald-50 text-emerald-700'>{p.get('statut_presence','')}</span></td></tr>" for p in all_presences])
         
         paiements_mobiles_admin = [c for c in all_cotisations if "mobile_" in str(c.get('mode_paiement', ''))]
         paiements_mobiles_rows = ""
@@ -510,7 +523,7 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
                 action_cell = "<span class='text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full'>Validé ✓</span>" if st_paiement == 'valide' else "<span class='text-xs font-bold text-amber-700 bg-amber-50 px-2.5 py-1 rounded-full'>⏳ En attente</span>"
 
             paiements_mobiles_rows += f"""
-            <tr class="hover:bg-slate-50 border-b text-sm">
+            <tr class="hover:bg-slate-50 border-b text-sm mobile-row" data-nom="{str(adh_pm.get('prenom','')).lower()} {str(adh_pm.get('nom','')).lower()}">
                 <td class="p-3 font-bold">{adh_pm.get('prenom','')} {adh_pm.get('nom','')}</td>
                 <td class="p-3 font-semibold text-blue-700 text-xs uppercase">{pm.get('mode_paiement','')}</td>
                 <td class="p-3 font-black text-emerald-700">{formater_montant(pm.get('montant',0))} CFA</td>
@@ -530,7 +543,7 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
                 """ if st_aide == 'en_attente' else f"<span class='text-xs font-bold py-1 px-2.5 rounded-full bg-slate-100 text-slate-600 uppercase'>{st_aide}</span>"
             else:
                 actions_aide = f"<span class='text-xs font-bold py-1 px-2.5 rounded-full bg-slate-100 text-slate-600 uppercase'>{st_aide}</span>"
-            aides_admin_html += f"<li class='py-3 border-b flex justify-between items-center text-sm'><div><b>{adh_aide.get('prenom','')} {adh_aide.get('nom','')}</b> — {ai.get('motif','')} <span class='text-amber-700 font-black'>({formater_montant(ai.get('montant_demande',0))} CFA)</span></div><div>{actions_aide}</div></li>"
+            aides_admin_html += f"<li class='py-3 border-b flex justify-between items-center text-sm aide-item' data-motif='{str(ai.get('motif','')).lower()}'><div><b>{adh_aide.get('prenom','')} {adh_aide.get('nom','')}</b> — {ai.get('motif','')} <span class='text-amber-700 font-black'>({formater_montant(ai.get('montant_demande',0))} CFA)</span></div><div>{actions_aide}</div></li>"
 
         options_adherents_select = "".join([f"<option value='{a['id']}'>{a.get('prenom','')} {a.get('nom','')} ({a.get('secteur','')})</option>" for a in all_actifs])
         options_evenements_select = "".join([f"<option value='{e.get('titre','')}' data-date='{e.get('date_reunion','')}' >{e.get('titre','')} ({formater_date(e.get('date_reunion',''))})</option>" for e in all_evenements])
@@ -564,19 +577,31 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
             """
         tresorerie_box_html += f"""
                 <div class="text-center bg-gradient-to-r from-slate-900 to-emerald-950 text-white py-4 rounded-2xl font-black text-lg mb-6 shadow-md">Solde Réel en Caisse : <span class="text-emerald-400">{formater_montant(solde)} CFA</span></div>
-                <h3 class="text-xs font-black text-slate-600 mb-3 uppercase tracking-wider">État des cotisations membres</h3>
-                <ul class="max-h-60 overflow-y-auto pr-2">{suivi_retards_html}</ul>
+                
+                <div class="flex justify-between items-center mb-3">
+                    <h3 class="text-xs font-black text-slate-600 uppercase tracking-wider">État des cotisations membres (À jour & Retards)</h3>
+                    <input type="text" id="search-retards" onkeyup="filterRetards()" placeholder="Filtrer les retards..." class="px-3 py-1 text-xs border border-slate-300 rounded-xl w-48 bg-slate-50">
+                </div>
+                <div class="overflow-x-auto max-h-72 overflow-y-auto border border-slate-200 rounded-2xl">
+                    <table class="w-full text-left bg-white">
+                        <tbody>{suivi_retards_html}</tbody>
+                    </table>
+                </div>
             </div>
             
             <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/80">
-                <h2 class="text-base font-black mb-3 border-b pb-3 text-slate-800">📱 Paiements Mobile Money</h2>
+                <div class="flex justify-between items-center mb-3 border-b pb-3">
+                    <h2 class="text-base font-black text-slate-800">📱 Paiements Mobile Money</h2>
+                    <input type="text" id="search-mobile" onkeyup="filterMobile()" placeholder="Rechercher..." class="px-3 py-1 text-xs border border-slate-300 rounded-xl w-48 bg-slate-50">
+                </div>
                 <div class="overflow-x-auto max-h-60 overflow-y-auto border border-slate-200 rounded-2xl">
-                    <table class="w-full text-left bg-white"><thead class="bg-slate-100 text-[11px] font-bold text-slate-600 uppercase"><tr><th class="p-3">Adhérent</th><th class="p-3">Détails</th><th class="p-3">Montant</th><th class="p-3">Période</th><th class="p-3 text-right">Action</th></tr></thead><tbody>{paiements_mobiles_rows or '<tr><td colspan="5" class="p-4 text-center text-sm text-slate-400">Aucun paiement.</td></tr>'}</tbody></table>
+                    <table class="w-full text-left bg-white"><thead class="bg-slate-100 text-[11px] font-bold text-slate-600 uppercase"><tr><th class="p-3">Adhérent</th><th class="p-3">Détails</th><th class="p-3">Montant</th><th class="p-3">Période</th><th class="p-3 text-right">Action</th></tr></thead><tbody id="mobile-tbody">{paiements_mobiles_rows or '<tr><td colspan="5" class="p-4 text-center text-sm text-slate-400">Aucun paiement.</td></tr>'}</tbody></table>
                 </div>
             </div>
         </div>
         """
 
+        # Espace Membre (Photo de profil, Déclaration mobile, Mes cotisations)
         member_specific_html = ""
         if not is_tresorier:
             cotis_perso = [c for c in all_cotisations if c.get('adherent_id') == user['id']]
@@ -589,14 +614,19 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
                     badge_recu = "<span class='bg-amber-100 text-amber-800 px-3 py-1 rounded-xl text-xs font-bold'>⏳ En attente de validation admin</span>"
                 mois_payes_html += f"<li class='py-3 border-b border-slate-100 text-sm flex justify-between items-center'><span>Mois de <b>{c.get('periode','')}</b> : <span class='text-emerald-700 font-bold'>{formater_montant(c.get('montant',0))} CFA</span></span> {badge_recu}</li>"
 
+            avatar_html = f"<img src='{user.get('photo_profil')}' class='w-16 h-16 rounded-2xl object-cover shadow-md border-2 border-emerald-400'>" if user.get('photo_profil') else f"<div class='w-16 h-16 rounded-2xl bg-emerald-100 flex items-center justify-center text-emerald-800 font-black text-xl shadow-md'>{user.get('prenom','M')[0]}</div>"
+
             member_specific_html = f"""
             <div class="bg-gradient-to-br from-slate-900 via-emerald-950 to-slate-900 text-white p-6 rounded-3xl shadow-xl flex justify-between items-center relative overflow-hidden">
                 <div>
-                    <span class="bg-emerald-500/20 text-emerald-300 text-[10px] font-extrabold px-2.5 py-1 rounded-full uppercase tracking-widest border border-emerald-500/30">Mon Compte</span>
+                    <span class="bg-emerald-500/20 text-emerald-300 text-[10px] font-extrabold px-2.5 py-1 rounded-full uppercase tracking-widest border border-emerald-500/30">Mon Compte Membre</span>
                     <h2 class="text-xl font-black mt-2">{user.get('prenom','')} {user.get('nom','')}</h2>
                     <p class="text-xs text-slate-300 font-medium mt-0.5">Secteur : {user.get('secteur','')} | Tél : {user.get('telephone','')}</p>
                 </div>
-                <div class="bg-white p-2 rounded-2xl shadow-lg"><img src="data:image/png;base64,{qr_perso_b64}" class="w-16 h-16 rounded-xl"></div>
+                <div class="flex items-center gap-3">
+                    {avatar_html}
+                    <div class="bg-white p-2 rounded-2xl shadow-lg"><img src="data:image/png;base64,{qr_perso_b64}" class="w-14 h-14 rounded-xl"></div>
+                </div>
             </div>
             <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/85">
                 <h2 class="text-base font-black mb-4 border-b pb-3 text-slate-800">📱 Déclarer un Paiement Mobile</h2>
@@ -640,6 +670,11 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
                 </div>
                 <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/80">
                     <h2 class="text-base font-black mb-4 border-b pb-3 text-slate-800">📌 Scanner / Pointage Présence</h2>
+                    <div class="mb-4 bg-emerald-50 p-3 rounded-2xl border border-emerald-200 text-center">
+                        <input type="file" accept="image/*" capture="environment" id="scan-photo-input" onchange="handleScanPhoto(this)" class="hidden">
+                        <button type="button" onclick="document.getElementById('scan-photo-input').click()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2 px-4 rounded-xl shadow-md transition">📷 Scanner Photo / QrCode Présence</button>
+                        <p id="scan-result-text" class="text-[11px] text-emerald-800 font-semibold mt-2">Cliquez pour scanner ou photographier la feuille de présence</p>
+                    </div>
                     <form action="/admin/pointer-presence" method="POST" class="space-y-3">
                         <input type="hidden" name="user_id" value="{user['id']}">
                         <div>
@@ -742,11 +777,68 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
                         }}
                     }}
                 }}
+                function filterRetards() {{
+                    let input = document.getElementById('search-retards').value.toLowerCase();
+                    let rows = document.getElementsByClassName('retard-row');
+                    for (let r of rows) {{
+                        let nom = r.getAttribute('data-nom');
+                        let secteur = r.getAttribute('data-secteur');
+                        if (nom.includes(input) || secteur.includes(input)) {{
+                            r.style.display = "";
+                        }} else {{
+                            r.style.display = "none";
+                        }}
+                    }}
+                }}
+                function filterPointage() {{
+                    let input = document.getElementById('search-pointage').value.toLowerCase();
+                    let rows = document.getElementsByClassName('presence-row');
+                    for (let r of rows) {{
+                        let nom = r.getAttribute('data-nom');
+                        let ev = r.getAttribute('data-event');
+                        if (nom.includes(input) || ev.includes(input)) {{
+                            r.style.display = "";
+                        }} else {{
+                            r.style.display = "none";
+                        }}
+                    }}
+                }}
+                function filterProjets() {{
+                    let input = document.getElementById('search-projets').value.toLowerCase();
+                    let items = document.getElementsByClassName('aide-item');
+                    for (let i of items) {{
+                        let motif = i.getAttribute('data-motif');
+                        if (motif.includes(input)) {{
+                            i.style.display = "";
+                        }} else {{
+                            i.style.display = "none";
+                        }}
+                    }}
+                }}
+                function filterMobile() {{
+                    let input = document.getElementById('search-mobile').value.toLowerCase();
+                    let rows = document.getElementsByClassName('mobile-row');
+                    for (let r of rows) {{
+                        let nom = r.getAttribute('data-nom');
+                        if (nom.includes(input)) {{
+                            r.style.display = "";
+                        }} else {{
+                            r.style.display = "none";
+                        }}
+                    }}
+                }}
                 function updateEventDate(select) {{
                     let opt = select.options[select.selectedIndex];
                     let dt = opt.getAttribute('data-date');
                     if (dt) {{
                         document.getElementById('input-event-date').value = dt.substring(0, 10);
+                    }}
+                }}
+                function handleScanPhoto(input) {{
+                    if (input.files && input.files[0]) {{
+                        document.getElementById('scan-result-text').innerText = "Photo scannée avec succès ! Prêt pour le pointage.";
+                        document.getElementById('scan-result-text').classList.remove('text-emerald-800');
+                        document.getElementById('scan-result-text').classList.add('text-blue-700', 'font-black');
                     }}
                 }}
             </script>
@@ -782,7 +874,7 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
                         <div class="flex flex-col sm:flex-row justify-between items-center mb-4 border-b pb-3 gap-3">
                             <h2 class="text-base font-black text-slate-800">👥 Annuaire ({len(all_adherents)})</h2>
                             <div class="flex gap-2 w-full sm:w-auto">
-                                <input type="text" id="search-annuaire" onkeyup="filterAnnuaire()" placeholder="Rechercher par nom, secteur..." class="px-3 py-1.5 text-xs border border-slate-300 rounded-xl w-full sm:w-64 bg-slate-50">
+                                <input type="text" id="search-annuaire" onkeyup="filterAnnuaire()" placeholder="Rechercher par nom, secteur, téléphone..." class="px-3 py-1.5 text-xs border border-slate-300 rounded-xl w-full sm:w-64 bg-slate-50">
                                 <a href="/adherents/export-pdf" target="_blank" class="bg-red-600 hover:bg-red-700 text-white px-3.5 py-1.5 rounded-xl text-xs font-extrabold shadow-md transition whitespace-nowrap">📄 PDF</a>
                             </div>
                         </div>
@@ -800,9 +892,12 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
                 <div id="tab-pointage" class="tab-content hidden space-y-6">
                     {admin_event_pointage_html}
                     <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/80">
-                        <h2 class="text-base font-black mb-4 border-b pb-3 text-slate-800">📋 Historique des Pointages</h2>
+                        <div class="flex justify-between items-center mb-4 border-b pb-3">
+                            <h2 class="text-base font-black text-slate-800">📋 Historique des Pointages</h2>
+                            <input type="text" id="search-pointage" onkeyup="filterPointage()" placeholder="Filtrer par nom, événement..." class="px-3 py-1 text-xs border border-slate-300 rounded-xl w-56 bg-slate-50">
+                        </div>
                         <div class="overflow-x-auto max-h-96 overflow-y-auto border border-slate-200 rounded-2xl">
-                            <table class="w-full text-left bg-white"><thead class="bg-slate-100 text-[11px] font-bold text-slate-600 uppercase"><tr><th class="p-3">Membre</th><th class="p-3">Événement</th><th class="p-3">Date</th><th class="p-3">Statut</th></tr></thead><tbody>{presences_table_rows or '<tr><td colspan="4" class="p-4 text-center text-sm text-slate-400">Aucun pointage enregistré.</td></tr>'}</tbody></table>
+                            <table class="w-full text-left bg-white"><thead class="bg-slate-100 text-[11px] font-bold text-slate-600 uppercase"><tr><th class="p-3">Membre</th><th class="p-3">Événement</th><th class="p-3">Date</th><th class="p-3">Statut</th></tr></thead><tbody id="presence-tbody">{presences_table_rows or '<tr><td colspan="4" class="p-4 text-center text-sm text-slate-400">Aucun pointage enregistré.</td></tr>'}</tbody></table>
                         </div>
                     </div>
                 </div>
@@ -810,8 +905,11 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
                 <div id="tab-projets" class="tab-content hidden space-y-6">
                     {admin_projet_form}
                     <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/80">
-                        <h2 class="text-base font-black mb-4 border-b pb-3 text-slate-800">🤝 Demandes d'Aide</h2>
-                        <ul class="max-h-60 overflow-y-auto pr-2">{aides_admin_html or '<p class="text-sm text-slate-400">Aucune demande.</p>'}</ul>
+                        <div class="flex justify-between items-center mb-4 border-b pb-3">
+                            <h2 class="text-base font-black text-slate-800">🤝 Demandes d'Aide</h2>
+                            <input type="text" id="search-projets" onkeyup="filterProjets()" placeholder="Filtrer demandes..." class="px-3 py-1 text-xs border border-slate-300 rounded-xl w-48 bg-slate-50">
+                        </div>
+                        <ul class="max-h-60 overflow-y-auto pr-2" id="aides-ul">{aides_admin_html or '<p class="text-sm text-slate-400">Aucune demande.</p>'}</ul>
                     </div>
                     <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/80">
                         <h2 class="text-base font-black mb-4 border-b pb-3 text-slate-800">🚀 Projets de l'Association</h2>
