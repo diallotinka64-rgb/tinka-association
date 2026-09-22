@@ -13,7 +13,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="62.0")
+app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="63.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -432,12 +432,18 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
 
         suivi_retards_html = ""
         for a in all_actifs:
-            cotis_membre = [c['periode'] for c in all_cotisations if c.get('adherent_id') == a['id'] and c.get('statut_paiement'] == 'valide']
-            mois_manquants = [m for m in mois_12 if m not in cotis_membre]
+            cotis_membre = []
+            for c in all_cotisations:
+                if c.get('adherent_id') == a['id'] and c.get('statut_paiement') == 'valide':
+                    cotis_membre.append(c.get('periode'))
             
-            # Message WhatsApp d'alerte de retard
+            mois_manquants = []
+            for m in mois_12:
+                if m not in cotis_membre:
+                    mois_manquants.append(m)
+            
             txt_wa = f"Bonjour {a.get('prenom','')}, rappel amical de l'association Tinka : vous avez {len(mois_manquants)} mois de cotisation en retard ({', '.join(mois_manquants)}). Merci de régulariser."
-            link_wa = f"https://wa.me/{str(a.get('telephone','')).replace('+', '')}?text={urllib_quote(txt_wa) if 'urllib_quote' in globals() else txt_wa}" if a.get('telephone') else "#"
+            link_wa = f"https://wa.me/{str(a.get('telephone','')).replace('+', '')}?text={txt_wa}" if a.get('telephone') else "#"
             
             btn_wa = f"<a href='{link_wa}' target='_blank' class='bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 rounded-lg text-xs font-bold ml-2 shadow-sm transition'>💬 Relancer WhatsApp</a>" if mois_manquants else ""
             
@@ -601,7 +607,6 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
         </div>
         """
 
-        # Espace Membre (Photo de profil, Déclaration mobile, Mes cotisations)
         member_specific_html = ""
         if not is_tresorier:
             cotis_perso = [c for c in all_cotisations if c.get('adherent_id') == user['id']]
