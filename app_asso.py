@@ -13,7 +13,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="63.0")
+app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="66.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -30,6 +30,18 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 UPLOAD_DIR = "static/uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+def normaliser_telephone(tel: str) -> str:
+    if not tel:
+        return ""
+    # Ne garder que les chiffres
+    nettoye = "".join([c for c in tel if c.isdigit()])
+    # Enlever les indicatifs courants (221, 224, etc.) si le numéro est trop long
+    for indicatif in ["221", "224", "223", "225", "33"]:
+        if nettoye.startswith(indicatif) and len(nettoye) > 9:
+            nettoye = nettoye[len(indicatif):]
+            break
+    return nettoye
 
 def formater_montant(montant: float) -> str:
     try:
@@ -107,7 +119,7 @@ def afficher_portail():
                         <form action="/login-form" method="POST" class="space-y-3.5">
                             <div>
                                 <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1">Numéro de téléphone</label>
-                                <input type="text" name="telephone" placeholder="ex: 221771234567" required class="w-full px-3 py-2.5 text-sm bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none transition shadow-sm">
+                                <input type="text" name="telephone" placeholder="ex: 771234567 ou 221771234567" required class="w-full px-3 py-2.5 text-sm bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none transition shadow-sm">
                             </div>
                             <div>
                                 <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1">Mot de passe</label>
@@ -123,7 +135,7 @@ def afficher_portail():
                                 <div><label class="block text-[11px] font-bold text-slate-600 mb-1">Nom</label><input type="text" name="nom" required class="w-full px-2.5 py-2 text-sm bg-white border border-slate-300 rounded-xl shadow-sm"></div>
                                 <div><label class="block text-[11px] font-bold text-slate-600 mb-1">Prénom</label><input type="text" name="prenom" required class="w-full px-2.5 py-2 text-sm bg-white border border-slate-300 rounded-xl shadow-sm"></div>
                             </div>
-                            <div><label class="block text-[11px] font-bold text-slate-600 mb-1">Téléphone</label><input type="text" name="telephone" required class="w-full px-2.5 py-2 text-sm bg-white border border-slate-300 rounded-xl shadow-sm"></div>
+                            <div><label class="block text-[11px] font-bold text-slate-600 mb-1">Téléphone</label><input type="text" name="telephone" placeholder="ex: 776510244" required class="w-full px-2.5 py-2 text-sm bg-white border border-slate-300 rounded-xl shadow-sm"></div>
                             <div><label class="block text-[11px] font-bold text-slate-600 mb-1">Adresse</label><input type="text" name="adresse" required class="w-full px-2.5 py-2 text-sm bg-white border border-slate-300 rounded-xl shadow-sm"></div>
                             <div><label class="block text-[11px] font-bold text-slate-600 mb-1">Secteur</label><input type="text" name="secteur" required class="w-full px-2.5 py-2 text-sm bg-white border border-slate-300 rounded-xl shadow-sm"></div>
                             <div><label class="block text-[11px] font-bold text-slate-600 mb-1">Photo de profil</label><input type="file" name="file_photo" accept="image/*" class="w-full text-xs text-slate-500 file:py-2 file:px-3 file:rounded-xl file:border-0 file:bg-emerald-50 file:text-emerald-700 font-semibold"></div>
@@ -145,15 +157,25 @@ def login_form(telephone: Optional[str] = Form(None), mot_de_passe: Optional[str
     if not telephone or not mot_de_passe:
         return RedirectResponse(url="/", status_code=303)
     try:
-        res = supabase.table("adherents").select("*").eq("telephone", telephone).execute()
+        tel_norm = normaliser_telephone(telephone)
+        res = supabase.table("adherents").select("*").execute()
         users = res.data or []
-        if not users:
+        
+        user = None
+        for u in users:
+            if normaliser_telephone(u.get('telephone', '')) == tel_norm:
+                user = u
+                break
+
+        if not user:
             return HTMLResponse(content="<script>alert('Numéro de téléphone ou mot de passe incorrect.'); window.location.href='/';</script>", status_code=401)
-        user = users[0]
+        
         if not verifier_mdp(mot_de_passe, user['mot_de_passe']):
             return HTMLResponse(content="<script>alert('Numéro de téléphone ou mot de passe incorrect.'); window.location.href='/';</script>", status_code=401)
+        
         if user.get('statut') != 'actif':
             return HTMLResponse(content="<script>alert('Votre compte est en attente de validation par l\\'administrateur.'); window.location.href='/';</script>", status_code=403)
+        
         return RedirectResponse(url=f"/dashboard?id={user['id']}", status_code=status.HTTP_303_SEE_OTHER)
     except Exception as e:
         return HTMLResponse(content=f"<h3>Erreur de connexion Supabase :</h3><p>{str(e)}</p><a href='/'>Retour</a>", status_code=500)
@@ -168,13 +190,19 @@ async def creer_adherent_form(
     if not telephone:
         return RedirectResponse(url="/", status_code=303)
     try:
-        existing_user = supabase.table("adherents").select("id").eq("telephone", telephone).execute()
-        if existing_user.data:
-            return HTMLResponse(content="<script>alert('Erreur : Ce numéro de téléphone est déjà associé à un compte existant.'); window.location.href='/';</script>")
+        tel_norm = normaliser_telephone(telephone)
+        
+        res_all = supabase.table("adherents").select("telephone").execute()
+        existing_users = res_all.data or []
+        for eu in existing_users:
+            if normaliser_telephone(eu.get('telephone', '')) == tel_norm:
+                return HTMLResponse(content="<script>alert('Erreur : Ce numéro de téléphone est déjà associé à un compte existant.'); window.location.href='/';</script>")
+
         photo_b64 = await fichier_vers_base64(file_photo)
         mdp_securise = hacher_mdp(mot_de_passe or "123456")
+        
         supabase.table("adherents").insert({
-            "nom": nom or "", "prenom": prenom or "", "email": f"{telephone}@tinka.local", "telephone": telephone,
+            "nom": nom or "", "prenom": prenom or "", "email": f"{tel_norm}@tinka.local", "telephone": tel_norm,
             "adresse": adresse or "", "secteur": secteur or "", "photo_profil": photo_b64, "mot_de_passe": mdp_securise
         }).execute()
         return HTMLResponse(content="<script>alert('Compte créé avec succès ! En attente de validation.'); window.location.href='/';</script>")
@@ -204,8 +232,9 @@ def modifier_adherent(
     if not user_id or not adherent_id:
         return RedirectResponse(url="/", status_code=303)
     try:
+        tel_norm = normaliser_telephone(telephone)
         supabase.table("adherents").update({
-            "nom": nom, "prenom": prenom, "telephone": telephone, "secteur": secteur
+            "nom": nom, "prenom": prenom, "telephone": tel_norm, "secteur": secteur
         }).eq("id", adherent_id).execute()
         return HTMLResponse(content=f"<script>alert('Informations mises à jour avec succès !'); window.location.href='/dashboard?id={user_id}';</script>")
     except Exception as e:
@@ -385,8 +414,16 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
         is_admin = user.get('role') == 'admin'
         is_tresorier = user.get('role') in ['admin', 'tresorier']
 
-        annee_courante = datetime.datetime.now().year
-        mois_12 = [f"{annee_courante}-{m:02d}" for m in range(9, 13)] + [f"{annee_courante+1}-{m:02d}" for m in range(1, 9)]
+        maintenant = datetime.datetime.now()
+        annee_actuelle = maintenant.year
+        mois_actuel = maintenant.month
+
+        mois_passes = []
+        for y in range(annee_actuelle - 1, annee_actuelle + 1):
+            for m in range(1, 13):
+                if y < annee_actuelle or (y == annee_actuelle and m <= mois_actuel):
+                    mois_passes.append(f"{y}-{m:02d}")
+        mois_passes = sorted(list(set(mois_passes)))
 
         all_actifs = supabase.table("adherents").select("*").eq("statut", "actif").execute().data or []
         all_adherents = supabase.table("adherents").select("*").execute().data or []
@@ -438,7 +475,7 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
                     cotis_membre.append(c.get('periode'))
             
             mois_manquants = []
-            for m in mois_12:
+            for m in mois_passes:
                 if m not in cotis_membre:
                     mois_manquants.append(m)
             
