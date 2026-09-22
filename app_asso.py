@@ -13,7 +13,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="59.0")
+app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="60.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -412,7 +412,7 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
 
         suivi_retards_html = ""
         for a in all_actifs:
-            cotis_membre = [c['periode'] for c in all_cotisations if c.get('adherent_id') == a['id'] and c.get('statut_paiement') == 'valide']
+            cotis_membre = [c['periode'] for c in all_cotisations if c.get('adherent_id') == a['id'] and c.get('statut_paiement'] == 'valide']
             mois_manquants = [m for m in mois_12 if m not in cotis_membre]
             statut_ajour = "<span class='text-emerald-700 font-extrabold bg-emerald-50 px-2.5 py-1 rounded-full text-xs'>À jour</span>" if not mois_manquants else f"<span class='text-red-700 font-extrabold bg-red-50 px-2.5 py-1 rounded-full text-xs'>Retard ({len(mois_manquants)} mois)</span>"
             suivi_retards_html += f"<li class='py-2.5 border-b border-slate-100 flex justify-between items-center text-sm'><span><b>{a.get('prenom','')} {a.get('nom','')}</b> <span class='text-xs text-slate-400 font-medium'>({a.get('secteur','')})</span></span> {statut_ajour}</li>"
@@ -531,15 +531,52 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
         </div>
         """
 
-        cotis_perso = [c for c in all_cotisations if c.get('adherent_id') == user['id']]
-        mois_payes_html = ""
-        for c in cotis_perso:
-            st_p = c.get('statut_paiement', 'en_attente')
-            if st_p == 'valide':
-                badge_recu = f"<a href='/cotisation/recu-pdf/{c['id']}' target='_blank' class='bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-xl text-xs font-bold shadow-sm transition'>📄 Télécharger Reçu PDF</a>"
-            else:
-                badge_recu = "<span class='bg-amber-100 text-amber-800 px-3 py-1 rounded-xl text-xs font-bold'>⏳ En attente de validation admin</span>"
-            mois_payes_html += f"<li class='py-3 border-b border-slate-100 text-sm flex justify-between items-center'><span>Mois de <b>{c.get('periode','')}</b> : <span class='text-emerald-700 font-bold'>{formater_montant(c.get('montant',0))} CFA</span></span> {badge_recu}</li>"
+        # BLOCS SPÉCIFIQUES AUX MEMBRES (Masqués pour l'Admin / Trésorier)
+        member_specific_html = ""
+        if not is_tresorier:
+            cotis_perso = [c for c in all_cotisations if c.get('adherent_id') == user['id']]
+            mois_payes_html = ""
+            for c in cotis_perso:
+                st_p = c.get('statut_paiement', 'en_attente')
+                if st_p == 'valide':
+                    badge_recu = f"<a href='/cotisation/recu-pdf/{c['id']}' target='_blank' class='bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-xl text-xs font-bold shadow-sm transition'>📄 Télécharger Reçu PDF</a>"
+                else:
+                    badge_recu = "<span class='bg-amber-100 text-amber-800 px-3 py-1 rounded-xl text-xs font-bold'>⏳ En attente de validation admin</span>"
+                mois_payes_html += f"<li class='py-3 border-b border-slate-100 text-sm flex justify-between items-center'><span>Mois de <b>{c.get('periode','')}</b> : <span class='text-emerald-700 font-bold'>{formater_montant(c.get('montant',0))} CFA</span></span> {badge_recu}</li>"
+
+            member_specific_html = f"""
+            <div class="bg-gradient-to-br from-slate-900 via-emerald-950 to-slate-900 text-white p-6 rounded-3xl shadow-xl flex justify-between items-center relative overflow-hidden">
+                <div>
+                    <span class="bg-emerald-500/20 text-emerald-300 text-[10px] font-extrabold px-2.5 py-1 rounded-full uppercase tracking-widest border border-emerald-500/30">Mon Compte</span>
+                    <h2 class="text-xl font-black mt-2">{user.get('prenom','')} {user.get('nom','')}</h2>
+                    <p class="text-xs text-slate-300 font-medium mt-0.5">Secteur : {user.get('secteur','')} | Tél : {user.get('telephone','')}</p>
+                </div>
+                <div class="bg-white p-2 rounded-2xl shadow-lg"><img src="data:image/png;base64,{qr_perso_b64}" class="w-16 h-16 rounded-xl"></div>
+            </div>
+
+            <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/85">
+                <h2 class="text-base font-black mb-4 border-b pb-3 text-slate-800">📱 Déclarer un Paiement Mobile</h2>
+                <form action="/paiement-mobile-form" method="POST" class="space-y-3.5">
+                    <input type="hidden" name="user_id" value="{user['id']}">
+                    <div class="grid grid-cols-3 gap-2">
+                        <select name="operateur" class="p-2.5 border border-slate-300 rounded-xl text-sm bg-white font-semibold"><option value="Wave">Wave</option><option value="OrangeMoney">Orange Money</option></select>
+                        <input type="text" name="telephone_paiement" value="{user.get('telephone','')}" required class="p-2.5 border border-slate-300 rounded-xl text-sm" placeholder="Mon Tél">
+                        <input type="text" name="numero_recepteur" required class="p-2.5 border border-slate-300 rounded-xl text-sm" placeholder="N° Récepteur">
+                    </div>
+                    <div class="grid grid-cols-3 gap-2">
+                        <input type="text" name="reference_transaction" required class="p-2.5 border border-slate-300 rounded-xl text-sm" placeholder="Réf. Transaction">
+                        <input type="number" name="montant" required class="p-2.5 border border-slate-300 rounded-xl text-sm" placeholder="Montant">
+                        <input type="text" name="periode" required class="p-2.5 border border-slate-300 rounded-xl text-sm" placeholder="Mois (ex: 2026-09)">
+                    </div>
+                    <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-xl text-sm shadow-md transition">Soumettre la déclaration</button>
+                </form>
+            </div>
+
+            <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/85">
+                <h2 class="text-base font-black mb-4 border-b pb-3 text-slate-800">📋 Mes Cotisations & Reçus</h2>
+                <ul class="max-h-60 overflow-y-auto pr-2">{mois_payes_html or '<p class="text-sm text-slate-400">Aucun versement enregistré pour le moment.</p>'}</ul>
+            </div>
+            """
 
         return f"""
         <!DOCTYPE html>
@@ -569,6 +606,7 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
         </head>
         <body class="bg-gradient-to-br from-slate-50 via-slate-100 to-emerald-50 text-slate-800 font-sans min-h-screen py-6 px-4">
             <div class="max-w-4xl mx-auto space-y-6">
+                <!-- En-tête profil -->
                 <div class="bg-white p-5 rounded-3xl shadow-sm border border-slate-200/80 flex justify-between items-center backdrop-blur-md">
                     <div class="flex items-center gap-3">
                         <div class="w-11 h-11 rounded-2xl bg-emerald-100 flex items-center justify-center text-emerald-800 font-black text-lg shadow-sm">{user.get('prenom','M')[0]}</div>
@@ -580,38 +618,10 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
                     <a href="/" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md transition">Déconnexion</a>
                 </div>
 
-                <div class="bg-gradient-to-br from-slate-900 via-emerald-950 to-slate-900 text-white p-6 rounded-3xl shadow-xl flex justify-between items-center relative overflow-hidden">
-                    <div>
-                        <span class="bg-emerald-500/20 text-emerald-300 text-[10px] font-extrabold px-2.5 py-1 rounded-full uppercase tracking-widest border border-emerald-500/30">Mon Compte</span>
-                        <h2 class="text-xl font-black mt-2">{user.get('prenom','')} {user.get('nom','')}</h2>
-                        <p class="text-xs text-slate-300 font-medium mt-0.5">Secteur : {user.get('secteur','')} | Tél : {user.get('telephone','')}</p>
-                    </div>
-                    <div class="bg-white p-2 rounded-2xl shadow-lg"><img src="data:image/png;base64,{qr_perso_b64}" class="w-16 h-16 rounded-xl"></div>
-                </div>
+                <!-- SECTIONS SPÉCIFIQUES AUX MEMBRES UNIQUEMENT -->
+                {member_specific_html}
 
-                <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/85">
-                    <h2 class="text-base font-black mb-4 border-b pb-3 text-slate-800">📱 Déclarer un Paiement Mobile</h2>
-                    <form action="/paiement-mobile-form" method="POST" class="space-y-3.5">
-                        <input type="hidden" name="user_id" value="{user['id']}">
-                        <div class="grid grid-cols-3 gap-2">
-                            <select name="operateur" class="p-2.5 border border-slate-300 rounded-xl text-sm bg-white font-semibold"><option value="Wave">Wave</option><option value="OrangeMoney">Orange Money</option></select>
-                            <input type="text" name="telephone_paiement" value="{user.get('telephone','')}" required class="p-2.5 border border-slate-300 rounded-xl text-sm" placeholder="Mon Tél">
-                            <input type="text" name="numero_recepteur" required class="p-2.5 border border-slate-300 rounded-xl text-sm" placeholder="N° Récepteur">
-                        </div>
-                        <div class="grid grid-cols-3 gap-2">
-                            <input type="text" name="reference_transaction" required class="p-2.5 border border-slate-300 rounded-xl text-sm" placeholder="Réf. Transaction">
-                            <input type="number" name="montant" required class="p-2.5 border border-slate-300 rounded-xl text-sm" placeholder="Montant">
-                            <input type="text" name="periode" required class="p-2.5 border border-slate-300 rounded-xl text-sm" placeholder="Mois (ex: 2026-09)">
-                        </div>
-                        <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-xl text-sm shadow-md transition">Soumettre la déclaration</button>
-                    </form>
-                </div>
-
-                <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/85">
-                    <h2 class="text-base font-black mb-4 border-b pb-3 text-slate-800">📋 Mes Cotisations & Reçus</h2>
-                    <ul class="max-h-60 overflow-y-auto pr-2">{mois_payes_html or '<p class="text-sm text-slate-400">Aucun versement enregistré pour le moment.</p>'}</ul>
-                </div>
-
+                <!-- BARRE DE NAVIGATION FIGÉE (STICKY HEADER) -->
                 <div class="sticky top-0 z-40 bg-white/95 backdrop-blur-md py-3 px-4 rounded-2xl shadow-md border border-slate-200/80 flex flex-wrap gap-2">
                     <button onclick="switchTab('tab-tresorerie')" id="btn-tab-tresorerie" class="tab-btn px-4 py-2 text-xs font-extrabold rounded-xl bg-slate-900 text-white shadow-md transition">💼 Trésorerie</button>
                     <button onclick="switchTab('tab-adherents')" id="btn-tab-adherents" class="tab-btn px-4 py-2 text-xs font-extrabold rounded-xl bg-white text-slate-700 border border-slate-200 shadow-sm hover:bg-slate-50 transition">👥 Annuaire</button>
@@ -619,6 +629,7 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
                     <button onclick="switchTab('tab-projets')" id="btn-tab-projets" class="tab-btn px-4 py-2 text-xs font-extrabold rounded-xl bg-white text-slate-700 border border-slate-200 shadow-sm hover:bg-slate-50 transition">🚀 Projets</button>
                 </div>
 
+                <!-- ONGLET 1 : TRÉSORERIE -->
                 <div id="tab-tresorerie" class="tab-content space-y-6">
                     {tresorerie_box_html}
                     <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/80">
@@ -629,6 +640,7 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
                     </div>
                 </div>
 
+                <!-- ONGLET 2 : ANNUAIRE -->
                 <div id="tab-adherents" class="tab-content hidden space-y-6">
                     <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/80">
                         <div class="flex justify-between items-center mb-4 border-b pb-3"><h2 class="text-base font-black text-slate-800">👥 Annuaire ({len(all_adherents)})</h2><a href="/adherents/export-pdf" target="_blank" class="bg-red-600 hover:bg-red-700 text-white px-3.5 py-2 rounded-xl text-xs font-extrabold shadow-md transition">📄 Exporter PDF</a></div>
@@ -636,6 +648,7 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
                     </div>
                 </div>
 
+                <!-- ONGLET 3 : POINTAGE -->
                 <div id="tab-pointage" class="tab-content hidden space-y-6">
                     <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/80">
                         <h2 class="text-base font-black mb-4 border-b pb-3 text-slate-800">📋 Pointage des Réunions</h2>
@@ -645,6 +658,7 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
                     </div>
                 </div>
 
+                <!-- ONGLET 4 : PROJETS & AIDES -->
                 <div id="tab-projets" class="tab-content hidden space-y-6">
                     <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/80">
                         <h2 class="text-base font-black mb-4 border-b pb-3 text-slate-800">🤝 Demandes d'Aide</h2>
