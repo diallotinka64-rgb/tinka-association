@@ -13,7 +13,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="61.0")
+app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="61.1")
 
 app.add_middleware(
     CORSMiddleware,
@@ -432,7 +432,7 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
 
         suivi_retards_html = ""
         for a in all_actifs:
-            cotis_membre = [c['periode'] for c in all_cotisations if c.get('adherent_id') == a['id'] and c.get('statut_paiement'] == 'valide']
+            cotis_membre = [c['periode'] for c in all_cotisations if c.get('adherent_id') == a['id'] and c.get('statut_paiement') == 'valide']
             mois_manquants = [m for m in mois_12 if m not in cotis_membre]
             statut_ajour = "<span class='text-emerald-700 font-extrabold bg-emerald-50 px-2.5 py-1 rounded-full text-xs'>À jour</span>" if not mois_manquants else f"<span class='text-red-700 font-extrabold bg-red-50 px-2.5 py-1 rounded-full text-xs'>Retard ({len(mois_manquants)} mois)</span>"
             suivi_retards_html += f"<li class='py-2.5 border-b border-slate-100 flex justify-between items-center text-sm'><span><b>{a.get('prenom','')} {a.get('nom','')}</b> <span class='text-xs text-slate-400 font-medium'>({a.get('secteur','')})</span></span> {statut_ajour}</li>"
