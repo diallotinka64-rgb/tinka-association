@@ -13,7 +13,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="66.0")
+app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="67.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -34,9 +34,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 def normaliser_telephone(tel: str) -> str:
     if not tel:
         return ""
-    # Ne garder que les chiffres
     nettoye = "".join([c for c in tel if c.isdigit()])
-    # Enlever les indicatifs courants (221, 224, etc.) si le numéro est trop long
     for indicatif in ["221", "224", "223", "225", "33"]:
         if nettoye.startswith(indicatif) and len(nettoye) > 9:
             nettoye = nettoye[len(indicatif):]
@@ -414,16 +412,14 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
         is_admin = user.get('role') == 'admin'
         is_tresorier = user.get('role') in ['admin', 'tresorier']
 
+        # Démarrage officiel de l'application fixé au mois en cours (Septembre 2026)
+        # Aucun mois du passé (2025, etc.) ne sera affiché ni compté en retard.
         maintenant = datetime.datetime.now()
         annee_actuelle = maintenant.year
         mois_actuel = maintenant.month
 
-        mois_passes = []
-        for y in range(annee_actuelle - 1, annee_actuelle + 1):
-            for m in range(1, 13):
-                if y < annee_actuelle or (y == annee_actuelle and m <= mois_actuel):
-                    mois_passes.append(f"{y}-{m:02d}")
-        mois_passes = sorted(list(set(mois_passes)))
+        # On prend uniquement le mois courant (ex: 2026-09) comme point de départ unique
+        mois_passes = [f"{annee_actuelle}-{mois_actuel:02d}"]
 
         all_actifs = supabase.table("adherents").select("*").eq("statut", "actif").execute().data or []
         all_adherents = supabase.table("adherents").select("*").execute().data or []
@@ -479,12 +475,12 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
                 if m not in cotis_membre:
                     mois_manquants.append(m)
             
-            txt_wa = f"Bonjour {a.get('prenom','')}, rappel amical de l'association Tinka : vous avez {len(mois_manquants)} mois de cotisation en retard ({', '.join(mois_manquants)}). Merci de régulariser."
+            txt_wa = f"Bonjour {a.get('prenom','')}, rappel amical de l'association Tinka : votre cotisation pour le mois de {mois_actuel} est en attente. Merci de régulariser."
             link_wa = f"https://wa.me/{str(a.get('telephone','')).replace('+', '')}?text={txt_wa}" if a.get('telephone') else "#"
             
             btn_wa = f"<a href='{link_wa}' target='_blank' class='bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 rounded-lg text-xs font-bold ml-2 shadow-sm transition'>💬 Relancer WhatsApp</a>" if mois_manquants else ""
             
-            statut_ajour = "<span class='text-emerald-700 font-extrabold bg-emerald-50 px-2.5 py-1 rounded-full text-xs'>À jour ✓</span>" if not mois_manquants else f"<span class='text-red-700 font-extrabold bg-red-50 px-2.5 py-1 rounded-full text-xs'>Retard ({len(mois_manquants)} mois : {', '.join(mois_manquants)})</span>{btn_wa}"
+            statut_ajour = "<span class='text-emerald-700 font-extrabold bg-emerald-50 px-2.5 py-1 rounded-full text-xs'>À jour ✓</span>" if not mois_manquants else f"<span class='text-red-700 font-extrabold bg-red-50 px-2.5 py-1 rounded-full text-xs'>En attente ({mois_passes[0]})</span>{btn_wa}"
             
             suivi_retards_html += f"""
             <tr class='border-b text-sm retard-row' data-nom='{str(a.get('prenom','')).lower()} {str(a.get('nom','')).lower()}' data-secteur='{str(a.get('secteur','')).lower()}'>
