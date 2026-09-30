@@ -13,7 +13,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="78.0")
+app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="79.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -486,7 +486,7 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
         param_res = supabase.table("parametres").select("solde_initial").eq("id", 1).execute()
         solde_initial = param_res.data[0]['solde_initial'] if param_res.data else 0.0
 
-        cotisations_caisse = sum([c['montant'] for c in all_cotisations if "regularisation" not in str(c.get('mode_paiement', '')) and c.get('statut_paiement'] == 'valide'])
+        cotisations_caisse = sum([c['montant'] for c in all_cotisations if "regularisation" not in str(c.get('mode_paiement', '')) and c.get('statut_paiement') == 'valide'])
         total_aides_approuvees = sum([ai['montant_demande'] for ai in all_aides if ai.get('statut_validation') == 'approuve'])
         total_dec = sum([d['montant'] for d in all_decaissements])
         
@@ -516,7 +516,7 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
         for a in all_actifs:
             cotis_membre = []
             for c in all_cotisations:
-                if c.get('adherent_id') == a['id'] and c.get('statut_paiement'] == 'valide':
+                if c.get('adherent_id') == a['id'] and c.get('statut_paiement') == 'valide':
                     cotis_membre.append(c.get('periode'))
             
             mois_manquants = []
