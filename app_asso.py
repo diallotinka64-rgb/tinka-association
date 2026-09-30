@@ -13,7 +13,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="75.0")
+app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="77.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -307,20 +307,24 @@ def valider_paiement_mobile(user_id: Optional[int] = Form(None), paiement_id: Op
         return HTMLResponse(content=f"<script>alert('Paiement mobile validé avec succès ! Le reçu est désormais disponible pour le membre.'); window.location.href='/dashboard?id={user_id}';</script>")
     return RedirectResponse(url="/", status_code=303)
 
-@app.api_route("/paiement-rapide", methods=["GET", "POST"], response_class=HTMLResponse)
-@app.api_route("/paiement-rapide/", methods=["GET", "POST"], response_class=HTMLResponse)
-def paiement_rapide(
+@app.api_route("/initier-paiement-passerelle", methods=["POST"], response_class=HTMLResponse)
+def initier_paiement_passerelle(
     user_id: Optional[int] = Form(None), montant: Optional[float] = Form(None), 
     periode: Optional[str] = Form(None), operateur: Optional[str] = Form(None)
 ):
     if not user_id:
         return RedirectResponse(url="/", status_code=303)
     try:
-        mode = f"1-clic_{str(operateur).lower()}"
-        supabase.table("cotisations").insert({
+        # Enregistrement initial en attente
+        mode = f"passerelle_{str(operateur).lower()}"
+        res = supabase.table("cotisations").insert({
             "adherent_id": user_id, "montant": montant or 5000, "periode": periode or str(datetime.date.today())[:7],
             "mode_paiement": mode, "statut_paiement": "en_attente"
         }).execute()
+        
+        # Simulation de redirection vers une paserelle de test gratuite (ex: Sandbox CinetPay / PayTech)
+        # Dès que vous aurez vos clés, vous pourrez remplacer cette URL par l'appel API réel de la passerelle.
+        url_simulation_passerelle = f"/simulation-page-paiement?user_id={user_id}&montant={montant}&periode={periode}&operateur={operateurs}"
         return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
     except Exception as e:
         return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
@@ -548,7 +552,7 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
 
         presences_table_rows = "".join([f"<tr class='border-b border-white/5 text-sm presence-row hover:bg-white/5 transition' data-nom='{str(p.get('adherents',{}).get('prenom','')).lower()} {str(p.get('adherents',{}).get('nom','')).lower()}' data-event='{str(p.get('evenement_titre','')).lower()}'><td class='p-3.5 font-bold text-white'>{p.get('adherents',{}).get('prenom','')} {p.get('adherents',{}).get('nom','')}</td><td class='p-3.5 text-slate-300'>{p.get('evenement_titre','')}</td><td class='p-3.5 text-slate-400'>{formater_date(p.get('date_reunion',''))}</td><td class='p-3.5'><span class='text-xs px-3 py-1 rounded-full font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'>{p.get('statut_presence','')}</span></td></tr>" for p in all_presences])
         
-        paiements_mobiles_admin = [c for c in all_cotisations if "1-clic_" in str(c.get('mode_paiement', '')) or "mobile_" in str(c.get('mode_paiement', ''))]
+        paiements_mobiles_admin = [c for c in all_cotisations if "passerelle_" in str(c.get('mode_paiement', '')) or "1-clic_" in str(c.get('mode_paiement', ''))]
         paiements_mobiles_rows = ""
         for pm in paiements_mobiles_admin:
             adh_pm = pm.get('adherents', {}) or {}
@@ -635,7 +639,7 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
             
             <div class="bg-white/5 backdrop-blur-xl p-6 rounded-3xl shadow-xl border border-white/10">
                 <div class="flex justify-between items-center mb-4 border-b border-white/10 pb-3">
-                    <h2 class="text-base font-extrabold text-emerald-300">📱 Paiements Mobile Money</h2>
+                    <h2 class="text-base font-extrabold text-emerald-300">📱 Paiements Passerelle & Mobile</h2>
                     <input type="text" id="search-mobile" onkeyup="filterMobile()" placeholder="Rechercher..." class="px-3.5 py-1.5 text-xs border border-white/20 rounded-xl w-48 bg-slate-900/60 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-400">
                 </div>
                 <div class="overflow-x-auto max-h-60 overflow-y-auto border border-white/10 rounded-2xl bg-black/20">
@@ -673,18 +677,18 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
                 </div>
             </div>
 
-            <!-- Interface 1-Clic ultra simple pour les membres -->
+            <!-- Module de Test de Passerelle de Paiement Sécurisée -->
             <div class="bg-white/5 backdrop-blur-xl p-6 rounded-3xl shadow-xl border border-white/10 space-y-4">
                 <div class="border-b border-white/10 pb-3 flex justify-between items-center">
-                    <h2 class="text-base font-extrabold text-emerald-300">⚡ Paiement Rapide (1-Clic)</h2>
-                    <span class="text-[11px] bg-emerald-500/20 text-emerald-300 px-3 py-1 rounded-full font-bold">Sans référence compliquée</span>
+                    <h2 class="text-base font-extrabold text-emerald-300">💳 Passerelle de Paiement (Mode Test)</h2>
+                    <span class="text-[11px] bg-indigo-500/20 text-indigo-300 px-3 py-1 rounded-full font-bold border border-indigo-500/30">Sandbox Gratuite</span>
                 </div>
                 
                 <p class="text-xs text-slate-300 leading-relaxed">
-                    Cliquez directement sur l'application de votre choix pour régler votre cotisation. Le système notifiera le trésorier instantanément.
+                    Testez le tunnel de paiement sécurisé de la passerelle. Vous serez redirigé vers une page de simulation de paiement (Wave, Orange Money ou Carte).
                 </p>
 
-                <form action="/paiement-rapide" method="POST" class="space-y-4">
+                <form action="/initier-paiement-passerelle" method="POST" class="space-y-4">
                     <input type="hidden" name="user_id" value="{user['id']}">
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
@@ -698,11 +702,11 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
                     </div>
                     
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-                        <button type="submit" name="operateur" value="Wave" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-black py-3.5 px-4 rounded-2xl shadow-lg shadow-cyan-600/30 transition flex items-center justify-center gap-2 text-sm">
-                            💙 Payer 1-Clic avec Wave
+                        <button type="submit" name="operateur" value="WaveSandbox" class="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-black py-3.5 px-4 rounded-2xl shadow-lg shadow-cyan-600/30 transition flex items-center justify-center gap-2 text-sm cursor-pointer">
+                            💙 Payer via Passerelle Wave
                         </button>
-                        <button type="submit" name="operateur" value="OrangeMoney" class="w-full bg-orange-600 hover:bg-orange-500 text-white font-black py-3.5 px-4 rounded-2xl shadow-lg shadow-orange-600/30 transition flex items-center justify-center gap-2 text-sm">
-                            🧡 Payer 1-Clic avec Orange Money
+                        <button type="submit" name="operateur" value="OrangeSandbox" class="w-full bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white font-black py-3.5 px-4 rounded-2xl shadow-lg shadow-orange-600/30 transition flex items-center justify-center gap-2 text-sm cursor-pointer">
+                            🧡 Payer via Passerelle Orange
                         </button>
                     </div>
                 </form>
@@ -953,13 +957,11 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
                     }}
                 }}
                 function handleScanPhoto(input) {{
-                    if (input.files && input.files[0]) {{
-                        let txt = document.getElementById('scan-result-text');
-                        if (txt) {{
-                            txt.innerText = "Photo scannée avec succès ! Prêt pour le pointage.";
-                            txt.classList.remove('text-emerald-300');
-                            txt.classList.add('text-emerald-400', 'font-black');
-                        }}
+                    let txt = document.getElementById('scan-result-text');
+                    if (txt) {{
+                        txt.innerText = "Photo scannée avec succès ! Prêt pour le pointage.";
+                        txt.classList.remove('text-emerald-300');
+                        txt.classList.add('text-emerald-400', 'font-black');
                     }}
                 }}
             </script>
