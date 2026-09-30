@@ -321,9 +321,9 @@ def paiement_rapide(
             "adherent_id": user_id, "montant": montant or 5000, "periode": periode or str(datetime.date.today())[:7],
             "mode_paiement": mode, "statut_paiement": "en_attente"
         }).execute()
-        return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
+        return HTMLResponse(content=f"<script>alert('Demande de paiement envoyée avec succès !'); window.location.href='/dashboard?id={user_id}';</script>")
     except Exception as e:
-        return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
+        return HTMLResponse(content=f"<script>alert('Erreur : {str(e)}'); window.location.href='/dashboard?id={user_id}';</script>")
 
 @app.api_route("/projets-form", methods=["GET", "POST"], response_class=HTMLResponse)
 @app.api_route("/projets-form/", methods=["GET", "POST"], response_class=HTMLResponse)
@@ -438,7 +438,7 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
         param_res = supabase.table("parametres").select("solde_initial").eq("id", 1).execute()
         solde_initial = param_res.data[0]['solde_initial'] if param_res.data else 0.0
 
-        cotisations_caisse = sum([c['montant'] for c in all_cotisations if "regularisation" not in str(c.get('mode_paiement', '')) and c.get('statut_paiement'] == 'valide'])
+        cotisations_caisse = sum([c['montant'] for c in all_cotisations if "regularisation" not in str(c.get('mode_paiement', '')) and c.get('statut_paiement') == 'valide'])
         total_aides_approuvees = sum([ai['montant_demande'] for ai in all_aides if ai.get('statut_validation') == 'approuve'])
         total_dec = sum([d['montant'] for d in all_decaissements])
         
@@ -659,6 +659,7 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
 
             avatar_html = f"<img src='{user.get('photo_profil')}' class='w-16 h-16 rounded-2xl object-cover shadow-lg border-2 border-emerald-400/80'>" if user.get('photo_profil') else f"<div class='w-16 h-16 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-300 font-black text-xl shadow-lg'>{user.get('prenom','M')[0]}</div>"
 
+            per_str = f"{annee_actuelle}-{mois_actuel:02d}"
             member_specific_html = f"""
             <div class="bg-gradient-to-r from-slate-900 via-emerald-950 to-teal-950 text-white p-6 rounded-3xl shadow-2xl flex justify-between items-center relative overflow-hidden border border-white/10 backdrop-blur-xl">
                 <div>
@@ -672,51 +673,39 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
                 </div>
             </div>
 
-            <!-- Interface 1-Clic Améliorée avec Modale de Confirmation -->
+            <!-- Interface 1-Clic ultra simple pour les membres -->
             <div class="bg-white/5 backdrop-blur-xl p-6 rounded-3xl shadow-xl border border-white/10 space-y-4">
                 <div class="border-b border-white/10 pb-3 flex justify-between items-center">
                     <h2 class="text-base font-extrabold text-emerald-300">⚡ Paiement Rapide (1-Clic)</h2>
-                    <span class="text-[11px] bg-emerald-500/20 text-emerald-300 px-3 py-1 rounded-full font-bold">Sans formulaire complexe</span>
+                    <span class="text-[11px] bg-emerald-500/20 text-emerald-300 px-3 py-1 rounded-full font-bold">Sans référence compliquée</span>
                 </div>
                 
                 <p class="text-xs text-slate-300 leading-relaxed">
-                    Cliquez sur l'application de votre choix. Une fenêtre s'affichera instantanément pour confirmer votre versement auprès du trésorier.
+                    Cliquez directement sur l'application de votre choix pour régler votre cotisation. Le système notifiera le trésorier instantanément.
                 </p>
 
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-                    <button type="button" onclick="openPaiementModal('Wave', '{f"{annee_actuelle}-{mois_actuel:02d}"}', '5000')" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-black py-4 px-4 rounded-2xl shadow-lg shadow-cyan-600/30 transition flex items-center justify-center gap-2 text-sm">
-                        💙 Payer 1-Clic avec Wave
-                    </button>
-                    <button type="button" onclick="openPaiementModal('OrangeMoney', '{f"{annee_actuelle}-{mois_actuel:02d}"}', '5000')" class="w-full bg-orange-600 hover:bg-orange-500 text-white font-black py-4 px-4 rounded-2xl shadow-lg shadow-orange-600/30 transition flex items-center justify-center gap-2 text-sm">
-                        🧡 Payer 1-Clic avec Orange Money
-                    </button>
-                </div>
-            </div>
-
-            <!-- Modale de Confirmation de Paiement 1-Clic -->
-            <div id="modal-paiement-rapide" class="fixed inset-0 bg-black/70 backdrop-blur-md z-50 hidden flex items-center justify-center p-4">
-                <div class="bg-slate-900 border border-white/20 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4">
-                    <div class="flex justify-between items-center border-b border-white/10 pb-3">
-                        <h3 class="font-bold text-base text-emerald-300" id="modal-title-op">Confirmation de Paiement</h3>
-                        <button onclick="closePaiementModal()" class="font-bold text-lg text-slate-400 hover:text-white">✕</button>
-                    </div>
-                    <form action="/paiement-rapide" method="POST" class="space-y-4">
-                        <input type="hidden" name="user_id" value="{user['id']}">
-                        <input type="hidden" name="operateur" id="input-op-hidden">
+                <form action="/paiement-rapide" method="POST" class="space-y-4">
+                    <input type="hidden" name="user_id" value="{user['id']}">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
-                            <label class="block text-xs font-bold mb-1 text-slate-300">Mois / Période concernée</label>
-                            <input type="text" name="periode" id="input-periode-modal" value="{f"{annee_actuelle}-{mois_actuel:02d}"}" required class="w-full p-3 border border-white/20 rounded-xl text-sm bg-slate-800 text-white font-bold">
+                            <label class="block text-xs font-bold mb-1 text-slate-300">Mois concerné</label>
+                            <input type="text" name="periode" value="{per_str}" required class="w-full p-3 border border-white/20 rounded-xl text-sm bg-slate-900/60 text-white text-center font-bold">
                         </div>
                         <div>
                             <label class="block text-xs font-bold mb-1 text-slate-300">Montant (CFA)</label>
-                            <input type="number" name="montant" id="input-montant-modal" value="5000" required class="w-full p-3 border border-white/20 rounded-xl text-sm bg-slate-800 text-white font-bold">
+                            <input type="number" name="montant" value="5000" required class="w-full p-3 border border-white/20 rounded-xl text-sm bg-slate-900/60 text-white text-center font-bold">
                         </div>
-                        <div class="bg-emerald-500/10 p-3 rounded-xl border border-emerald-500/20 text-xs text-emerald-300">
-                            En confirmant, votre demande est transmise au trésorier pour validation immédiate et émission du reçu.
-                        </div>
-                        <button type="submit" class="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold py-3.5 rounded-xl text-sm shadow-lg transition">Confirmer et Envoyer</button>
-                    </form>
-                </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                        <button type="submit" name="operateur" value="Wave" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-black py-3.5 px-4 rounded-2xl shadow-lg shadow-cyan-600/30 transition flex items-center justify-center gap-2 text-sm">
+                            💙 Payer 1-Clic avec Wave
+                        </button>
+                        <button type="submit" name="operateur" value="OrangeMoney" class="w-full bg-orange-600 hover:bg-orange-500 text-white font-black py-3.5 px-4 rounded-2xl shadow-lg shadow-orange-600/30 transition flex items-center justify-center gap-2 text-sm">
+                            🧡 Payer 1-Clic avec Orange Money
+                        </button>
+                    </div>
+                </form>
             </div>
 
             <div class="bg-white/5 backdrop-blur-xl p-6 rounded-3xl shadow-xl border border-white/10">
@@ -901,26 +890,6 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
                 }}
                 function openModal(id) {{ let m = document.getElementById('modal-' + id); if(m) m.classList.remove('hidden'); }}
                 function closeModal(id) {{ let m = document.getElementById('modal-' + id); if(m) m.classList.add('hidden'); }}
-                
-                function openPaiementModal(op, moisDef, montantDef) {{
-                    let m = document.getElementById('modal-paiement-rapide');
-                    let titleOp = document.getElementById('modal-title-op');
-                    let inputOp = document.getElementById('input-op-hidden');
-                    let inputMois = document.getElementById('input-periode-modal');
-                    let inputMontant = document.getElementById('input-montant-modal');
-                    
-                    if (titleOp) titleOp.innerText = "Paiement 1-Clic via " + op;
-                    if (inputOp) inputOp.value = op;
-                    if (inputMois) inputMois.value = moisDef;
-                    if (inputMontant) inputMontant.value = montantDef;
-                    
-                    if (m) m.classList.remove('hidden');
-                }}
-                function closePaiementModal() {{
-                    let m = document.getElementById('modal-paiement-rapide');
-                    if (m) m.classList.add('hidden');
-                }}
-
                 function filterAnnuaire() {{
                     let input = document.getElementById('search-annuaire');
                     if (!input) return;
