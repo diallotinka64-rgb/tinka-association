@@ -13,7 +13,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="68.0")
+app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="69.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -98,47 +98,47 @@ def afficher_portail():
             <title>Tinka ka Mein Haaldi fotti</title>
             <script src="https://cdn.tailwindcss.com"></script>
         </head>
-        <body class="bg-gradient-to-br from-slate-50 via-slate-100 to-emerald-50 text-slate-800 font-sans antialiased min-h-screen py-8 px-4 flex flex-col justify-between">
-            <div class="max-w-md mx-auto w-full bg-white/90 backdrop-blur-md rounded-3xl shadow-2xl p-6 sm:p-8 border border-slate-100">
+        <body class="bg-gradient-to-tr from-slate-900 via-emerald-950 to-teal-900 text-slate-100 font-sans antialiased min-h-screen py-10 px-4 flex flex-col justify-between">
+            <div class="max-w-md mx-auto w-full bg-white/10 backdrop-blur-xl rounded-3xl shadow-2xl p-6 sm:p-8 border border-white/20">
                 <div class="text-center mb-6">
-                    <span class="inline-block bg-emerald-100 text-emerald-800 text-xs font-extrabold px-3.5 py-1 rounded-full uppercase tracking-wider mb-2 shadow-sm">Portail Officiel</span>
-                    <h1 class="text-2xl font-black text-slate-900 tracking-tight">Tinka ka Mein Haaldi fotti</h1>
-                    <p class="text-xs text-slate-500 mt-1 font-medium">Gestion administrative, financière & Daara</p>
+                    <span class="inline-block bg-emerald-500/20 text-emerald-300 text-xs font-extrabold px-4 py-1.5 rounded-full uppercase tracking-widest mb-3 border border-emerald-500/30 shadow-inner">Portail Officiel</span>
+                    <h1 class="text-2xl font-black text-white tracking-tight">Tinka ka Mein Haaldi fotti</h1>
+                    <p class="text-xs text-slate-300 mt-1 font-medium">Gestion administrative, financière & Daara</p>
                 </div>
                 <div class="flex justify-center mb-6">
-                    <div class="bg-white p-3 rounded-2xl border-2 border-dashed border-emerald-200 shadow-sm text-center">
+                    <div class="bg-white/90 p-3.5 rounded-2xl shadow-lg text-center backdrop-blur-sm border border-white/30">
                         <img src="data:image/png;base64,{qr_b64}" alt="QR Code" class="w-28 h-28 mx-auto mb-2 rounded-xl">
-                        <span class="text-[11px] font-bold text-slate-600">Scannez pour accéder au site</span>
+                        <span class="text-[11px] font-bold text-slate-700">Scannez pour accéder au site</span>
                     </div>
                 </div>
                 <div class="space-y-6">
-                    <div class="bg-slate-50/80 p-5 rounded-2xl border border-slate-200/80 shadow-inner">
-                        <h2 class="text-sm font-extrabold text-slate-800 mb-3 flex items-center gap-2 uppercase tracking-wide">🔐 Connexion</h2>
+                    <div class="bg-white/5 p-5 rounded-2xl border border-white/10 backdrop-blur-md shadow-inner">
+                        <h2 class="text-xs font-extrabold text-emerald-300 mb-3 flex items-center gap-2 uppercase tracking-wider">🔐 Connexion</h2>
                         <form action="/login-form" method="POST" class="space-y-3.5">
                             <div>
-                                <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1">Numéro de téléphone</label>
-                                <input type="text" name="telephone" placeholder="ex: 771234567 ou 221771234567" required class="w-full px-3 py-2.5 text-sm bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none transition shadow-sm">
+                                <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-300 mb-1">Numéro de téléphone</label>
+                                <input type="text" name="telephone" placeholder="ex: 771234567 ou 221771234567" required class="w-full px-3.5 py-2.5 text-sm bg-slate-900/50 border border-white/20 rounded-xl text-white placeholder-slate-400 focus:ring-2 focus:ring-emerald-400 focus:outline-none transition shadow-sm">
                             </div>
                             <div>
-                                <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1">Mot de passe</label>
-                                <input type="password" name="mot_de_passe" required class="w-full px-3 py-2.5 text-sm bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none transition shadow-sm">
+                                <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-300 mb-1">Mot de passe</label>
+                                <input type="password" name="mot_de_passe" required class="w-full px-3.5 py-2.5 text-sm bg-slate-900/50 border border-white/20 rounded-xl text-white placeholder-slate-400 focus:ring-2 focus:ring-emerald-400 focus:outline-none transition shadow-sm">
                             </div>
-                            <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-4 rounded-xl shadow-lg shadow-blue-600/20 transition duration-200 text-sm">Se connecter</button>
+                            <button type="submit" class="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold py-2.5 px-4 rounded-xl shadow-lg shadow-blue-600/30 transition duration-200 text-sm">Se connecter</button>
                         </form>
                     </div>
-                    <div class="bg-slate-50/80 p-5 rounded-2xl border border-slate-200/80 shadow-inner">
-                        <h2 class="text-sm font-extrabold text-emerald-800 mb-3 flex items-center gap-2 uppercase tracking-wide">📝 Nouvel Adhérent</h2>
+                    <div class="bg-white/5 p-5 rounded-2xl border border-white/10 backdrop-blur-md shadow-inner">
+                        <h2 class="text-xs font-extrabold text-emerald-300 mb-3 flex items-center gap-2 uppercase tracking-wider">📝 Nouvel Adhérent</h2>
                         <form action="/adherents-form" method="POST" enctype="multipart/form-data" class="space-y-3">
                             <div class="grid grid-cols-2 gap-2">
-                                <div><label class="block text-[11px] font-bold text-slate-600 mb-1">Nom</label><input type="text" name="nom" required class="w-full px-2.5 py-2 text-sm bg-white border border-slate-300 rounded-xl shadow-sm"></div>
-                                <div><label class="block text-[11px] font-bold text-slate-600 mb-1">Prénom</label><input type="text" name="prenom" required class="w-full px-2.5 py-2 text-sm bg-white border border-slate-300 rounded-xl shadow-sm"></div>
+                                <div><label class="block text-[11px] font-bold text-slate-300 mb-1">Nom</label><input type="text" name="nom" required class="w-full px-3 py-2 text-sm bg-slate-900/50 border border-white/20 rounded-xl text-white shadow-sm"></div>
+                                <div><label class="block text-[11px] font-bold text-slate-300 mb-1">Prénom</label><input type="text" name="prenom" required class="w-full px-3 py-2 text-sm bg-slate-900/50 border border-white/20 rounded-xl text-white shadow-sm"></div>
                             </div>
-                            <div><label class="block text-[11px] font-bold text-slate-600 mb-1">Téléphone</label><input type="text" name="telephone" placeholder="ex: 776510244" required class="w-full px-2.5 py-2 text-sm bg-white border border-slate-300 rounded-xl shadow-sm"></div>
-                            <div><label class="block text-[11px] font-bold text-slate-600 mb-1">Adresse</label><input type="text" name="adresse" required class="w-full px-2.5 py-2 text-sm bg-white border border-slate-300 rounded-xl shadow-sm"></div>
-                            <div><label class="block text-[11px] font-bold text-slate-600 mb-1">Secteur</label><input type="text" name="secteur" required class="w-full px-2.5 py-2 text-sm bg-white border border-slate-300 rounded-xl shadow-sm"></div>
-                            <div><label class="block text-[11px] font-bold text-slate-600 mb-1">Photo de profil</label><input type="file" name="file_photo" accept="image/*" class="w-full text-xs text-slate-500 file:py-2 file:px-3 file:rounded-xl file:border-0 file:bg-emerald-50 file:text-emerald-700 font-semibold"></div>
-                            <div><label class="block text-[11px] font-bold text-slate-600 mb-1">Mot de passe</label><input type="password" name="mot_de_passe" required class="w-full px-2.5 py-2 text-sm bg-white border border-slate-300 rounded-xl shadow-sm"></div>
-                            <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-4 rounded-xl shadow-lg shadow-emerald-600/20 text-sm mt-1 transition duration-200">S'inscrire</button>
+                            <div><label class="block text-[11px] font-bold text-slate-300 mb-1">Téléphone</label><input type="text" name="telephone" placeholder="ex: 776510244" required class="w-full px-3 py-2 text-sm bg-slate-900/50 border border-white/20 rounded-xl text-white shadow-sm"></div>
+                            <div><label class="block text-[11px] font-bold text-slate-300 mb-1">Adresse</label><input type="text" name="adresse" required class="w-full px-3 py-2 text-sm bg-slate-900/50 border border-white/20 rounded-xl text-white shadow-sm"></div>
+                            <div><label class="block text-[11px] font-bold text-slate-300 mb-1">Secteur</label><input type="text" name="secteur" required class="w-full px-3 py-2 text-sm bg-slate-900/50 border border-white/20 rounded-xl text-white shadow-sm"></div>
+                            <div><label class="block text-[11px] font-bold text-slate-300 mb-1">Photo de profil</label><input type="file" name="file_photo" accept="image/*" class="w-full text-xs text-slate-300 file:py-2 file:px-3 file:rounded-xl file:border-0 file:bg-emerald-500/20 file:text-emerald-300 font-semibold"></div>
+                            <div><label class="block text-[11px] font-bold text-slate-300 mb-1">Mot de passe</label><input type="password" name="mot_de_passe" required class="w-full px-3 py-2 text-sm bg-slate-900/50 border border-white/20 rounded-xl text-white shadow-sm"></div>
+                            <button type="submit" class="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold py-2.5 px-4 rounded-xl shadow-lg shadow-emerald-600/30 text-sm mt-1 transition duration-200">S'inscrire</button>
                         </form>
                     </div>
                 </div>
@@ -446,16 +446,16 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
         projets_cards_html = ""
         for pr in all_projets:
             projets_cards_html += f"""
-            <div class="bg-white p-5 rounded-2xl border border-slate-200/80 mb-4 shadow-sm">
+            <div class="bg-white/5 backdrop-blur-md p-5 rounded-2xl border border-white/10 mb-4 shadow-lg">
                 <div class="flex justify-between items-start gap-2 mb-2">
-                    <h4 class="font-black text-base text-indigo-950">{pr.get('titre', '')}</h4>
-                    <span class="text-[11px] font-extrabold px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 uppercase">{pr.get('statut', '')}</span>
+                    <h4 class="font-bold text-base text-emerald-300">{pr.get('titre', '')}</h4>
+                    <span class="text-[10px] font-extrabold px-3 py-1 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 uppercase">{pr.get('statut', '')}</span>
                 </div>
-                <p class="text-xs text-slate-600 mb-3 leading-relaxed">{pr.get('description', '')}</p>
-                <div class="text-xs text-slate-600 space-y-1.5 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                <p class="text-xs text-slate-300 mb-3 leading-relaxed">{pr.get('description', '')}</p>
+                <div class="text-xs text-slate-300 space-y-1.5 bg-black/20 p-3 rounded-xl border border-white/5">
                     <div><b>🎯 Objectifs :</b> {pr.get('objectifs', 'Non spécifié')}</div>
                     <div><b>📅 Planning :</b> {pr.get('chronologie', 'Non spécifié')}</div>
-                    <div class="font-extrabold text-emerald-700">💰 Budget estimé : {formater_montant(pr.get('cout', 0))} CFA</div>
+                    <div class="font-bold text-emerald-400">💰 Budget estimé : {formater_montant(pr.get('cout', 0))} CFA</div>
                 </div>
             </div>
             """
@@ -475,14 +475,14 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
             txt_wa = f"Bonjour {a.get('prenom','')}, rappel amical de l'association Tinka : votre cotisation pour le mois de {mois_actuel} est en attente. Merci de régulariser."
             link_wa = f"https://wa.me/{str(a.get('telephone','')).replace('+', '')}?text={txt_wa}" if a.get('telephone') else "#"
             
-            btn_wa = f"<a href='{link_wa}' target='_blank' class='bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 rounded-lg text-xs font-bold ml-2 shadow-sm transition'>💬 Relancer WhatsApp</a>" if mois_manquants else ""
+            btn_wa = f"<a href='{link_wa}' target='_blank' class='bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-xl text-xs font-bold ml-2 shadow-md transition inline-flex items-center gap-1'>💬 Relancer</a>" if mois_manquants else ""
             
-            statut_ajour = "<span class='text-emerald-700 font-extrabold bg-emerald-50 px-2.5 py-1 rounded-full text-xs'>À jour ✓</span>" if not mois_manquants else f"<span class='text-red-700 font-extrabold bg-red-50 px-2.5 py-1 rounded-full text-xs'>En attente ({mois_passes[0]})</span>{btn_wa}"
+            statut_ajour = "<span class='text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-full text-xs'>À jour ✓</span>" if not mois_manquants else f"<span class='text-amber-400 font-bold bg-amber-500/10 border border-amber-500/20 px-3 py-1 rounded-full text-xs'>En attente ({mois_passes[0]})</span>{btn_wa}"
             
             suivi_retards_html += f"""
-            <tr class='border-b text-sm retard-row' data-nom='{str(a.get('prenom','')).lower()} {str(a.get('nom','')).lower()}' data-secteur='{str(a.get('secteur','')).lower()}'>
-                <td class='p-3 font-bold text-slate-900'>{a.get('prenom','')} {a.get('nom','')} <span class='text-xs text-slate-400 font-normal'>({a.get('secteur','')})</span></td>
-                <td class='p-3 text-right'>{statut_ajour}</td>
+            <tr class='border-b border-white/5 text-sm retard-row hover:bg-white/5 transition' data-nom='{str(a.get('prenom','')).lower()} {str(a.get('nom','')).lower()}' data-secteur='{str(a.get('secteur','')).lower()}'>
+                <td class='p-3.5 font-bold text-white'>{a.get('prenom','')} {a.get('nom','')} <span class='text-xs text-slate-400 font-normal'>({a.get('secteur','')})</span></td>
+                <td class='p-3.5 text-right'>{statut_ajour}</td>
             </tr>
             """
 
@@ -492,13 +492,13 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
             actions_admin = ""
             if is_tresorier and a.get('statut') == 'en_attente':
                 actions_admin += f"""
-                <form action="/admin/valider-adherent" method="POST" class="inline"><input type="hidden" name="user_id" value="{user['id']}"><input type="hidden" name="adherent_id" value="{a['id']}"><button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 rounded-lg text-xs font-bold shadow-sm transition">Valider</button></form>
+                <form action="/admin/valider-adherent" method="POST" class="inline"><input type="hidden" name="user_id" value="{user['id']}"><input type="hidden" name="adherent_id" value="{a['id']}"><button type="submit" class="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow-md transition">Valider</button></form>
                 """
             if is_admin:
                 actions_admin += f"""
                 <form action="/admin/changer-role" method="POST" class="inline-block ml-1">
                     <input type="hidden" name="user_id" value="{user['id']}"><input type="hidden" name="adherent_id" value="{a['id']}">
-                    <select name="nouveau_role" onchange="this.form.submit()" class="p-1.5 text-xs border border-slate-300 rounded-xl bg-white text-blue-700 font-bold shadow-sm">
+                    <select name="nouveau_role" onchange="this.form.submit()" class="p-1.5 text-xs bg-slate-900 border border-white/20 rounded-xl text-emerald-300 font-bold shadow-sm">
                         <option value="membre" {'selected' if a.get('role')=='membre' else ''}>Membre</option>
                         <option value="tresorier" {'selected' if a.get('role')=='tresorier' else ''}>Trésorier</option>
                         <option value="admin" {'selected' if a.get('role')=='admin' else ''}>Admin</option>
@@ -506,39 +506,39 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
                 </form>
                 """
 
-            btn_modif = f"""<button onclick="openModal({a['id']})" class="bg-blue-50 hover:bg-blue-100 text-blue-700 px-3 py-1 rounded-xl text-xs font-bold ml-1 transition">⚙️</button>""" if is_tresorier or a['id'] == user['id'] else ""
+            btn_modif = f"""<button onclick="openModal({a['id']})" class="bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 border border-blue-500/30 px-3 py-1 rounded-xl text-xs font-bold ml-1 transition">⚙️ Modifier</button>""" if is_tresorier or a['id'] == user['id'] else ""
 
             adherents_table_rows += f"""
-            <tr class="hover:bg-slate-50 border-b text-sm adherent-row" data-nom="{str(a.get('prenom','')).lower()} {str(a.get('nom','')).lower()}" data-secteur="{str(a.get('secteur','')).lower()}" data-tel="{str(a.get('telephone',''))}">
-                <td class="p-3 font-semibold text-slate-900">{a.get('prenom','')} {a.get('nom','')}</td>
-                <td class="p-3"><span class="text-[11px] bg-slate-100 text-slate-700 px-2.5 py-1 rounded-full font-bold uppercase">{a.get('role','')}</span></td>
-                <td class="p-3 text-slate-600">{a.get('secteur','')}</td>
-                <td class="p-3 font-mono text-xs text-slate-500">{a.get('telephone','')}</td>
-                <td class="p-3 text-right">{actions_admin}{btn_modif}</td>
+            <tr class="hover:bg-white/5 border-b border-white/5 text-sm adherent-row transition" data-nom="{str(a.get('prenom','')).lower()} {str(a.get('nom','')).lower()}" data-secteur="{str(a.get('secteur','')).lower()}" data-tel="{str(a.get('telephone',''))}">
+                <td class="p-3.5 font-semibold text-white">{a.get('prenom','')} {a.get('nom','')}</td>
+                <td class="p-3.5"><span class="text-[10px] bg-white/10 text-slate-300 px-3 py-1 rounded-full font-bold uppercase tracking-wider">{a.get('role','')}</span></td>
+                <td class="p-3.5 text-slate-300">{a.get('secteur','')}</td>
+                <td class="p-3.5 font-mono text-xs text-slate-400">{a.get('telephone','')}</td>
+                <td class="p-3.5 text-right">{actions_admin}{btn_modif}</td>
             </tr>
             """
 
             modals_html += f"""
-            <div id="modal-{a['id']}" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
-                <div class="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-100">
-                    <div class="flex justify-between items-center mb-4 border-b pb-3"><h3 class="font-black text-lg text-slate-800">Modifier : {a.get('prenom','')} {a.get('nom','')}</h3><button onclick="closeModal({a['id']})" class="font-bold text-lg text-slate-400 hover:text-slate-700">✕</button></div>
+            <div id="modal-{a['id']}" class="fixed inset-0 bg-black/70 backdrop-blur-md z-50 hidden flex items-center justify-center p-4">
+                <div class="bg-slate-900 border border-white/20 rounded-3xl max-w-lg w-full p-6 shadow-2xl">
+                    <div class="flex justify-between items-center mb-4 border-b border-white/10 pb-3"><h3 class="font-bold text-lg text-emerald-300">Modifier : {a.get('prenom','')} {a.get('nom','')}</h3><button onclick="closeModal({a['id']})" class="font-bold text-lg text-slate-400 hover:text-white">✕</button></div>
                     <form action="/admin/modifier-adherent" method="POST" class="space-y-4 mb-4">
                         <input type="hidden" name="user_id" value="{user['id']}"><input type="hidden" name="adherent_id" value="{a['id']}">
                         <div class="grid grid-cols-2 gap-3">
-                            <div><label class="block text-xs font-bold mb-1 text-slate-600">Prénom</label><input type="text" name="prenom" value="{a.get('prenom','')}" required class="w-full p-2.5 text-sm border border-slate-300 rounded-xl"></div>
-                            <div><label class="block text-xs font-bold mb-1 text-slate-600">Nom</label><input type="text" name="nom" value="{a.get('nom','')}" required class="w-full p-2.5 text-sm border border-slate-300 rounded-xl"></div>
+                            <div><label class="block text-xs font-bold mb-1 text-slate-300">Prénom</label><input type="text" name="prenom" value="{a.get('prenom','')}" required class="w-full p-3 text-sm bg-slate-800 border border-white/20 rounded-xl text-white"></div>
+                            <div><label class="block text-xs font-bold mb-1 text-slate-300">Nom</label><input type="text" name="nom" value="{a.get('nom','')}" required class="w-full p-3 text-sm bg-slate-800 border border-white/20 rounded-xl text-white"></div>
                         </div>
                         <div class="grid grid-cols-2 gap-3">
-                            <div><label class="block text-xs font-bold mb-1 text-slate-600">Téléphone</label><input type="text" name="telephone" value="{a.get('telephone','')}" required class="w-full p-2.5 text-sm border border-slate-300 rounded-xl"></div>
-                            <div><label class="block text-xs font-bold mb-1 text-slate-600">Secteur</label><input type="text" name="secteur" value="{a.get('secteur','')}" required class="w-full p-2.5 text-sm border border-slate-300 rounded-xl"></div>
+                            <div><label class="block text-xs font-bold mb-1 text-slate-300">Téléphone</label><input type="text" name="telephone" value="{a.get('telephone','')}" required class="w-full p-3 text-sm bg-slate-800 border border-white/20 rounded-xl text-white"></div>
+                            <div><label class="block text-xs font-bold mb-1 text-slate-300">Secteur</label><input type="text" name="secteur" value="{a.get('secteur','')}" required class="w-full p-3 text-sm bg-slate-800 border border-white/20 rounded-xl text-white"></div>
                         </div>
-                        <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-xl text-sm font-bold shadow-md transition">Enregistrer les modifications</button>
+                        <button type="submit" class="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white py-3 rounded-xl text-sm font-bold shadow-lg transition">Enregistrer les modifications</button>
                     </form>
                 </div>
             </div>
             """
 
-        presences_table_rows = "".join([f"<tr class='border-b text-sm presence-row' data-nom='{str(p.get('adherents',{}).get('prenom','')).lower()} {str(p.get('adherents',{}).get('nom','')).lower()}' data-event='{str(p.get('evenement_titre','')).lower()}'><td class='p-3 font-bold'>{p.get('adherents',{}).get('prenom','')} {p.get('adherents',{}).get('nom','')}</td><td class='p-3 text-slate-700'>{p.get('evenement_titre','')}</td><td class='p-3 text-slate-500'>{formater_date(p.get('date_reunion',''))}</td><td class='p-3'><span class='text-xs px-2.5 py-1 rounded-full font-extrabold bg-emerald-50 text-emerald-700'>{p.get('statut_presence','')}</span></td></tr>" for p in all_presences])
+        presences_table_rows = "".join([f"<tr class='border-b border-white/5 text-sm presence-row hover:bg-white/5 transition' data-nom='{str(p.get('adherents',{}).get('prenom','')).lower()} {str(p.get('adherents',{}).get('nom','')).lower()}' data-event='{str(p.get('evenement_titre','')).lower()}'><td class='p-3.5 font-bold text-white'>{p.get('adherents',{}).get('prenom','')} {p.get('adherents',{}).get('nom','')}</td><td class='p-3.5 text-slate-300'>{p.get('evenement_titre','')}</td><td class='p-3.5 text-slate-400'>{formater_date(p.get('date_reunion',''))}</td><td class='p-3.5'><span class='text-xs px-3 py-1 rounded-full font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'>{p.get('statut_presence','')}</span></td></tr>" for p in all_presences])
         
         paiements_mobiles_admin = [c for c in all_cotisations if "mobile_" in str(c.get('mode_paiement', ''))]
         paiements_mobiles_rows = ""
@@ -549,22 +549,22 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
                 action_cell = f"""
                 <form action="/admin/valider-paiement-mobile" method="POST" class="inline">
                     <input type="hidden" name="user_id" value="{user['id']}"><input type="hidden" name="paiement_id" value="{pm['id']}">
-                    <button type="submit" class="bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow-sm transition">⏳ Valider</button>
+                    <button type="submit" class="bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 px-3 py-1.5 rounded-xl text-xs font-bold shadow-sm transition">⏳ Valider</button>
                 </form>
                 """ if st_paiement != 'valide' else f"""
-                <span class="text-xs font-bold text-emerald-700 bg-emerald-100 px-2.5 py-1 rounded-full mr-2">Validé ✓</span>
-                <a href="/cotisation/recu-pdf/{pm['id']}" target="_blank" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-xl text-xs font-bold shadow-sm transition">📄 PDF</a>
+                <span class="text-xs font-bold text-emerald-300 bg-emerald-500/20 border border-emerald-500/30 px-3 py-1 rounded-full mr-2">Validé ✓</span>
+                <a href="/cotisation/recu-pdf/{pm['id']}" target="_blank" class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow-sm transition">📄 PDF</a>
                 """
             else:
-                action_cell = "<span class='text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full'>Validé ✓</span>" if st_paiement == 'valide' else "<span class='text-xs font-bold text-amber-700 bg-amber-50 px-2.5 py-1 rounded-full'>⏳ En attente</span>"
+                action_cell = "<span class='text-xs font-bold text-emerald-300 bg-emerald-500/20 px-3 py-1 rounded-full'>Validé ✓</span>" if st_paiement == 'valide' else "<span class='text-xs font-bold text-amber-300 bg-amber-500/20 px-3 py-1 rounded-full'>⏳ En attente</span>"
 
             paiements_mobiles_rows += f"""
-            <tr class="hover:bg-slate-50 border-b text-sm mobile-row" data-nom="{str(adh_pm.get('prenom','')).lower()} {str(adh_pm.get('nom','')).lower()}">
-                <td class="p-3 font-bold">{adh_pm.get('prenom','')} {adh_pm.get('nom','')}</td>
-                <td class="p-3 font-semibold text-blue-700 text-xs uppercase">{pm.get('mode_paiement','')}</td>
-                <td class="p-3 font-black text-emerald-700">{formater_montant(pm.get('montant',0))} CFA</td>
-                <td class="p-3 text-slate-600 font-medium">{pm.get('periode','')}</td>
-                <td class="p-3 text-right">{action_cell}</td>
+            <tr class="hover:bg-white/5 border-b border-white/5 text-sm mobile-row transition" data-nom="{str(adh_pm.get('prenom','')).lower()} {str(adh_pm.get('nom','')).lower()}">
+                <td class="p-3.5 font-bold text-white">{adh_pm.get('prenom','')} {adh_pm.get('nom','')}</td>
+                <td class="p-3.5 font-semibold text-blue-300 text-xs uppercase">{pm.get('mode_paiement','')}</td>
+                <td class="p-3.5 font-bold text-emerald-400">{formater_montant(pm.get('montant',0))} CFA</td>
+                <td class="p-3.5 text-slate-300">{pm.get('periode','')}</td>
+                <td class="p-3.5 text-right">{action_cell}</td>
             </tr>
             """
 
@@ -574,64 +574,64 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
             st_aide = ai.get('statut_validation', 'en_attente')
             if is_tresorier:
                 actions_aide = f"""
-                <form action="/admin/valider-aide" method="POST" class="inline-block"><input type="hidden" name="user_id" value="{user['id']}"><input type="hidden" name="aide_id" value="{ai['id']}"><input type="hidden" name="statut_validation" value="approuve"><button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 rounded-lg text-xs font-bold mr-1 transition">Approuver</button></form>
-                <form action="/admin/valider-aide" method="POST" class="inline-block"><input type="hidden" name="user_id" value="{user['id']}"><input type="hidden" name="aide_id" value="{ai['id']}"><input type="hidden" name="statut_validation" value="refuse"><button type="submit" class="bg-red-600 hover:bg-red-700 text-white px-2.5 py-1 rounded-lg text-xs font-bold transition">Refuser</button></form>
-                """ if st_aide == 'en_attente' else f"<span class='text-xs font-bold py-1 px-2.5 rounded-full bg-slate-100 text-slate-600 uppercase'>{st_aide}</span>"
+                <form action="/admin/valider-aide" method="POST" class="inline-block"><input type="hidden" name="user_id" value="{user['id']}"><input type="hidden" name="aide_id" value="{ai['id']}"><input type="hidden" name="statut_validation" value="approuve"><button type="submit" class="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold mr-1 shadow-sm transition">Approuver</button></form>
+                <form action="/admin/valider-aide" method="POST" class="inline-block"><input type="hidden" name="user_id" value="{user['id']}"><input type="hidden" name="aide_id" value="{ai['id']}"><input type="hidden" name="statut_validation" value="refuse"><button type="submit" class="bg-red-600 hover:bg-red-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm transition">Refuser</button></form>
+                """ if st_aide == 'en_attente' else f"<span class='text-xs font-bold py-1 px-3 rounded-full bg-white/10 text-slate-300 uppercase'>{st_aide}</span>"
             else:
-                actions_aide = f"<span class='text-xs font-bold py-1 px-2.5 rounded-full bg-slate-100 text-slate-600 uppercase'>{st_aide}</span>"
-            aides_admin_html += f"<li class='py-3 border-b flex justify-between items-center text-sm aide-item' data-motif='{str(ai.get('motif','')).lower()}'><div><b>{adh_aide.get('prenom','')} {adh_aide.get('nom','')}</b> — {ai.get('motif','')} <span class='text-amber-700 font-black'>({formater_montant(ai.get('montant_demande',0))} CFA)</span></div><div>{actions_aide}</div></li>"
+                actions_aide = f"<span class='text-xs font-bold py-1 px-3 rounded-full bg-white/10 text-slate-300 uppercase'>{st_aide}</span>"
+            aides_admin_html += f"<li class='py-3 border-b border-white/5 flex justify-between items-center text-sm aide-item' data-motif='{str(ai.get('motif','')).lower()}'><div><b class='text-white'>{adh_aide.get('prenom','')} {adh_aide.get('nom','')}</b> — <span class='text-slate-300'>{ai.get('motif','')}</span> <span class='text-amber-400 font-bold'>({formater_montant(ai.get('montant_demande',0))} CFA)</span></div><div>{actions_aide}</div></li>"
 
-        options_adherents_select = "".join([f"<option value='{a['id']}'>{a.get('prenom','')} {a.get('nom','')} ({a.get('secteur','')})</option>" for a in all_actifs])
-        options_evenements_select = "".join([f"<option value='{e.get('titre','')}' data-date='{e.get('date_reunion','')}' >{e.get('titre','')} ({formater_date(e.get('date_reunion',''))})</option>" for e in all_evenements])
+        options_adherents_select = "".join([f"<option value='{a['id']}' class='bg-slate-900'>{a.get('prenom','')} {a.get('nom','')} ({a.get('secteur','')})</option>" for a in all_actifs])
+        options_evenements_select = "".join([f"<option value='{e.get('titre','')}' data-date='{e.get('date_reunion','')}' class='bg-slate-900'>{e.get('titre','')} ({formater_date(e.get('date_reunion',''))})</option>" for e in all_evenements])
 
         tresorerie_box_html = f"""
         <div class="space-y-6">
-            <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/80">
-                <h2 class="text-base font-black mb-4 border-b pb-3 text-slate-800">💼 Trésorerie & Solde Global</h2>
+            <div class="bg-white/5 backdrop-blur-xl p-6 rounded-3xl shadow-xl border border-white/10">
+                <h2 class="text-base font-extrabold mb-5 border-b border-white/10 pb-3 text-emerald-300 flex items-center gap-2">💼 Trésorerie & Solde Global</h2>
                 """
         if is_tresorier:
             tresorerie_box_html += f"""
-                <form action="/admin/maj-solde-initial" method="POST" class="bg-gradient-to-r from-emerald-50 to-teal-50 p-4 rounded-2xl border border-emerald-200/60 mb-6 flex gap-3 items-end shadow-inner">
+                <form action="/admin/maj-solde-initial" method="POST" class="bg-gradient-to-r from-emerald-950/60 to-teal-950/60 p-5 rounded-2xl border border-emerald-500/30 mb-6 flex gap-3 items-end shadow-inner backdrop-blur-md">
                     <input type="hidden" name="user_id" value="{user['id']}">
-                    <div class="flex-1"><label class="block text-xs font-bold text-emerald-900 mb-1">Solde Initial Réel en Caisse</label><input type="number" name="solde_initial" value="{solde_initial}" required class="w-full p-2.5 text-sm bg-white border border-emerald-300 rounded-xl shadow-sm"></div>
-                    <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-5 rounded-xl text-sm shadow-md transition">Mettre à jour</button>
+                    <div class="flex-1"><label class="block text-xs font-bold text-emerald-300 mb-1.5">Solde Initial Réel en Caisse</label><input type="number" name="solde_initial" value="{solde_initial}" required class="w-full p-3 text-sm bg-slate-900/80 border border-emerald-500/40 rounded-xl text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"></div>
+                    <button type="submit" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 px-6 rounded-xl text-sm shadow-lg shadow-emerald-600/30 transition">Mettre à jour</button>
                 </form>
 
-                <div class="bg-slate-50 p-5 rounded-2xl border border-slate-200 mb-6">
-                    <h3 class="text-xs font-black text-slate-800 mb-3 uppercase tracking-wider">➕ Saisie Manuelle d'une Cotisation Membre</h3>
+                <div class="bg-white/5 p-5 rounded-2xl border border-white/10 mb-6 backdrop-blur-md">
+                    <h3 class="text-xs font-extrabold text-emerald-300 mb-3 uppercase tracking-wider">➕ Saisie Manuelle d'une Cotisation Membre</h3>
                     <form action="/admin/saisir-cotisation" method="POST" class="grid grid-cols-1 sm:grid-cols-4 gap-3">
                         <input type="hidden" name="user_id" value="{user['id']}">
-                        <select name="adherent_id" required class="p-2.5 text-sm border border-slate-300 rounded-xl bg-white font-semibold">
+                        <select name="adherent_id" required class="p-3 text-sm border border-white/20 rounded-xl bg-slate-900 text-white font-semibold shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-400">
                             <option value="">-- Choisir un membre --</option>
                             {options_adherents_select}
                         </select>
-                        <input type="text" name="periode" placeholder="Période (ex: 2026-09)" required class="p-2.5 text-sm border border-slate-300 rounded-xl bg-white">
-                        <input type="number" name="montant" placeholder="Montant (CFA)" required class="p-2.5 text-sm border border-slate-300 rounded-xl bg-white">
-                        <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-4 rounded-xl text-sm shadow-md transition">Enregistrer</button>
+                        <input type="text" name="periode" placeholder="Période (ex: 2026-09)" required class="p-3 text-sm border border-white/20 rounded-xl bg-slate-900 text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-400">
+                        <input type="number" name="montant" placeholder="Montant (CFA)" required class="p-3 text-sm border border-white/20 rounded-xl bg-slate-900 text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-400">
+                        <button type="submit" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 px-4 rounded-xl text-sm shadow-lg shadow-emerald-600/30 transition">Enregistrer</button>
                     </form>
                 </div>
             """
         tresorerie_box_html += f"""
-                <div class="text-center bg-gradient-to-r from-slate-900 to-emerald-950 text-white py-4 rounded-2xl font-black text-lg mb-6 shadow-md">Solde Réel en Caisse : <span class="text-emerald-400">{formater_montant(solde)} CFA</span></div>
+                <div class="text-center bg-gradient-to-r from-slate-900 via-emerald-950 to-teal-950 text-white py-5 px-6 rounded-2xl font-black text-xl mb-6 shadow-xl border border-emerald-500/30">Solde Réel en Caisse : <span class="text-emerald-400 font-mono">{formater_montant(solde)} CFA</span></div>
                 
                 <div class="flex justify-between items-center mb-3">
-                    <h3 class="text-xs font-black text-slate-600 uppercase tracking-wider">État des cotisations membres (À jour & Retards)</h3>
-                    <input type="text" id="search-retards" onkeyup="filterRetards()" placeholder="Filtrer les retards..." class="px-3 py-1 text-xs border border-slate-300 rounded-xl w-48 bg-slate-50">
+                    <h3 class="text-xs font-extrabold text-slate-300 uppercase tracking-wider">État des cotisations membres (À jour & Retards)</h3>
+                    <input type="text" id="search-retards" onkeyup="filterRetards()" placeholder="Filtrer les retards..." class="px-3.5 py-1.5 text-xs border border-white/20 rounded-xl w-48 bg-slate-900/60 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-400">
                 </div>
-                <div class="overflow-x-auto max-h-72 overflow-y-auto border border-slate-200 rounded-2xl">
-                    <table class="w-full text-left bg-white">
+                <div class="overflow-x-auto max-h-72 overflow-y-auto border border-white/10 rounded-2xl bg-black/20">
+                    <table class="w-full text-left">
                         <tbody>{suivi_retards_html}</tbody>
                     </table>
                 </div>
             </div>
             
-            <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/80">
-                <div class="flex justify-between items-center mb-3 border-b pb-3">
-                    <h2 class="text-base font-black text-slate-800">📱 Paiements Mobile Money</h2>
-                    <input type="text" id="search-mobile" onkeyup="filterMobile()" placeholder="Rechercher..." class="px-3 py-1 text-xs border border-slate-300 rounded-xl w-48 bg-slate-50">
+            <div class="bg-white/5 backdrop-blur-xl p-6 rounded-3xl shadow-xl border border-white/10">
+                <div class="flex justify-between items-center mb-4 border-b border-white/10 pb-3">
+                    <h2 class="text-base font-extrabold text-emerald-300">📱 Paiements Mobile Money</h2>
+                    <input type="text" id="search-mobile" onkeyup="filterMobile()" placeholder="Rechercher..." class="px-3.5 py-1.5 text-xs border border-white/20 rounded-xl w-48 bg-slate-900/60 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-400">
                 </div>
-                <div class="overflow-x-auto max-h-60 overflow-y-auto border border-slate-200 rounded-2xl">
-                    <table class="w-full text-left bg-white"><thead class="bg-slate-100 text-[11px] font-bold text-slate-600 uppercase"><tr><th class="p-3">Adhérent</th><th class="p-3">Détails</th><th class="p-3">Montant</th><th class="p-3">Période</th><th class="p-3 text-right">Action</th></tr></thead><tbody id="mobile-tbody">{paiements_mobiles_rows or '<tr><td colspan="5" class="p-4 text-center text-sm text-slate-400">Aucun paiement.</td></tr>'}</tbody></table>
+                <div class="overflow-x-auto max-h-60 overflow-y-auto border border-white/10 rounded-2xl bg-black/20">
+                    <table class="w-full text-left"><thead class="bg-white/5 text-[11px] font-bold text-slate-300 uppercase tracking-wider"><tr><th class="p-3.5">Adhérent</th><th class="p-3.5">Détails</th><th class="p-3.5">Montant</th><th class="p-3.5">Période</th><th class="p-3.5 text-right">Action</th></tr></thead><tbody id="mobile-tbody">{paiements_mobiles_rows or '<tr><td colspan="5" class="p-4 text-center text-sm text-slate-400">Aucun paiement.</td></tr>'}</tbody></table>
                 </div>
             </div>
         </div>
@@ -644,102 +644,102 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
             for c in cotis_perso:
                 st_p = c.get('statut_paiement', 'en_attente')
                 if st_p == 'valide':
-                    badge_recu = f"<a href='/cotisation/recu-pdf/{c['id']}' target='_blank' class='bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-xl text-xs font-bold shadow-sm transition'>📄 Télécharger Reçu PDF</a>"
+                    badge_recu = f"<a href='/cotisation/recu-pdf/{c['id']}' target='_blank' class='bg-blue-600 hover:bg-blue-500 text-white px-3.5 py-1.5 rounded-xl text-xs font-bold shadow-md transition inline-flex items-center gap-1.5'>📄 Télécharger Reçu PDF</a>"
                 else:
-                    badge_recu = "<span class='bg-amber-100 text-amber-800 px-3 py-1 rounded-xl text-xs font-bold'>⏳ En attente de validation admin</span>"
-                mois_payes_html += f"<li class='py-3 border-b border-slate-100 text-sm flex justify-between items-center'><span>Mois de <b>{c.get('periode','')}</b> : <span class='text-emerald-700 font-bold'>{formater_montant(c.get('montant',0))} CFA</span></span> {badge_recu}</li>"
+                    badge_recu = "<span class='bg-amber-500/20 text-amber-300 border border-amber-500/30 px-3.5 py-1.5 rounded-xl text-xs font-bold'>⏳ En attente de validation admin</span>"
+                mois_payes_html += f"<li class='py-3.5 border-b border-white/5 text-sm flex justify-between items-center'><span class='text-slate-200'>Mois de <b class='text-emerald-300'>{c.get('periode','')}</b> : <span class='text-emerald-400 font-bold'>{formater_montant(c.get('montant',0))} CFA</span></span> {badge_recu}</li>"
 
-            avatar_html = f"<img src='{user.get('photo_profil')}' class='w-16 h-16 rounded-2xl object-cover shadow-md border-2 border-emerald-400'>" if user.get('photo_profil') else f"<div class='w-16 h-16 rounded-2xl bg-emerald-100 flex items-center justify-center text-emerald-800 font-black text-xl shadow-md'>{user.get('prenom','M')[0]}</div>"
+            avatar_html = f"<img src='{user.get('photo_profil')}' class='w-16 h-16 rounded-2xl object-cover shadow-lg border-2 border-emerald-400/80'>" if user.get('photo_profil') else f"<div class='w-16 h-16 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-300 font-black text-xl shadow-lg'>{user.get('prenom','M')[0]}</div>"
 
             member_specific_html = f"""
-            <div class="bg-gradient-to-br from-slate-900 via-emerald-950 to-slate-900 text-white p-6 rounded-3xl shadow-xl flex justify-between items-center relative overflow-hidden">
+            <div class="bg-gradient-to-r from-slate-900 via-emerald-950 to-teal-950 text-white p-6 rounded-3xl shadow-2xl flex justify-between items-center relative overflow-hidden border border-white/10 backdrop-blur-xl">
                 <div>
-                    <span class="bg-emerald-500/20 text-emerald-300 text-[10px] font-extrabold px-2.5 py-1 rounded-full uppercase tracking-widest border border-emerald-500/30">Mon Compte Membre</span>
-                    <h2 class="text-xl font-black mt-2">{user.get('prenom','')} {user.get('nom','')}</h2>
-                    <p class="text-xs text-slate-300 font-medium mt-0.5">Secteur : {user.get('secteur','')} | Tél : {user.get('telephone','')}</p>
+                    <span class="bg-emerald-500/20 text-emerald-300 text-[10px] font-extrabold px-3 py-1 rounded-full uppercase tracking-widest border border-emerald-500/30">Mon Compte Membre</span>
+                    <h2 class="text-xl font-black mt-2 text-white">{user.get('prenom','')} {user.get('nom','')}</h2>
+                    <p class="text-xs text-slate-300 font-medium mt-1">Secteur : <span class='text-emerald-300 font-semibold'>{user.get('secteur','')}</span> | Tél : <span class='text-emerald-300 font-semibold'>{user.get('telephone','')}</span></p>
                 </div>
                 <div class="flex items-center gap-3">
                     {avatar_html}
-                    <div class="bg-white p-2 rounded-2xl shadow-lg"><img src="data:image/png;base64,{qr_perso_b64}" class="w-14 h-14 rounded-xl"></div>
+                    <div class="bg-white/90 p-2 rounded-2xl shadow-xl border border-white/20"><img src="data:image/png;base64,{qr_perso_b64}" class="w-14 h-14 rounded-xl"></div>
                 </div>
             </div>
-            <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/85">
-                <h2 class="text-base font-black mb-4 border-b pb-3 text-slate-800">📱 Déclarer un Paiement Mobile</h2>
-                <form action="/paiement-mobile-form" method="POST" class="space-y-3.5">
+            <div class="bg-white/5 backdrop-blur-xl p-6 rounded-3xl shadow-xl border border-white/10">
+                <h2 class="text-base font-extrabold mb-4 border-b border-white/10 pb-3 text-emerald-300">📱 Déclarer un Paiement Mobile</h2>
+                <form action="/paiement-mobile-form" method="POST" class="space-y-4">
                     <input type="hidden" name="user_id" value="{user['id']}">
                     <div class="grid grid-cols-3 gap-2">
-                        <select name="operateur" class="p-2.5 border border-slate-300 rounded-xl text-sm bg-white font-semibold"><option value="Wave">Wave</option><option value="OrangeMoney">Orange Money</option></select>
-                        <input type="text" name="telephone_paiement" value="{user.get('telephone','')}" required class="p-2.5 border border-slate-300 rounded-xl text-sm" placeholder="Mon Tél">
-                        <input type="text" name="numero_recepteur" required class="p-2.5 border border-slate-300 rounded-xl text-sm" placeholder="N° Récepteur">
+                        <select name="operateur" class="p-3 border border-white/25 rounded-xl text-sm bg-slate-900 text-white font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-400"><option value="Wave">Wave</option><option value="OrangeMoney">Orange Money</option></select>
+                        <input type="text" name="telephone_paiement" value="{user.get('telephone','')}" required class="p-3 border border-white/25 rounded-xl text-sm bg-slate-900/60 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-400" placeholder="Mon Tél">
+                        <input type="text" name="numero_recepteur" required class="p-3 border border-white/25 rounded-xl text-sm bg-slate-900/60 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-400" placeholder="N° Récepteur">
                     </div>
                     <div class="grid grid-cols-3 gap-2">
-                        <input type="text" name="reference_transaction" required class="p-2.5 border border-slate-300 rounded-xl text-sm" placeholder="Réf. Transaction">
-                        <input type="number" name="montant" required class="p-2.5 border border-slate-300 rounded-xl text-sm" placeholder="Montant">
-                        <input type="text" name="periode" required class="p-2.5 border border-slate-300 rounded-xl text-sm" placeholder="Mois (ex: 2026-09)">
+                        <input type="text" name="reference_transaction" required class="p-3 border border-white/25 rounded-xl text-sm bg-slate-900/60 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-400" placeholder="Réf. Transaction">
+                        <input type="number" name="montant" required class="p-3 border border-white/25 rounded-xl text-sm bg-slate-900/60 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-400" placeholder="Montant">
+                        <input type="text" name="periode" required class="p-3 border border-white/25 rounded-xl text-sm bg-slate-900/60 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-400" placeholder="Mois (ex: 2026-09)">
                     </div>
-                    <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-xl text-sm shadow-md transition">Soumettre la déclaration</button>
+                    <button type="submit" class="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold py-3 rounded-xl text-sm shadow-lg shadow-blue-600/30 transition">Soumettre la déclaration</button>
                 </form>
             </div>
-            <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/85">
-                <h2 class="text-base font-black mb-4 border-b pb-3 text-slate-800">📋 Mes Cotisations & Reçus</h2>
+            <div class="bg-white/5 backdrop-blur-xl p-6 rounded-3xl shadow-xl border border-white/10">
+                <h2 class="text-base font-extrabold mb-4 border-b border-white/10 pb-3 text-emerald-300">📋 Mes Cotisations & Reçus</h2>
                 <ul class="max-h-60 overflow-y-auto pr-2">{mois_payes_html or '<p class="text-sm text-slate-400">Aucun versement enregistré pour le moment.</p>'}</ul>
             </div>
             """
 
-        evenements_cards = "".join([f"<div class='bg-slate-50 p-4 rounded-2xl border border-slate-200 mb-3'><h4 class='font-black text-sm text-slate-800'>{e.get('titre','')}</h4><p class='text-xs text-slate-500'>Date : {formater_date(e.get('date_reunion',''))}</p><p class='text-xs text-slate-600 mt-1'>{e.get('description','')}</p></div>" for e in all_evenements])
+        evenements_cards = "".join([f"<div class='bg-white/5 p-4 rounded-2xl border border-white/10 mb-3'><h4 class='font-bold text-sm text-emerald-300'>{e.get('titre','')}</h4><p class='text-xs text-slate-400'>Date : {formater_date(e.get('date_reunion',''))}</p><p class='text-xs text-slate-300 mt-1'>{e.get('description','')}</p></div>" for e in all_evenements])
         
         admin_event_pointage_html = ""
         if is_tresorier:
             admin_event_pointage_html = f"""
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/80">
-                    <h2 class="text-base font-black mb-4 border-b pb-3 text-slate-800">📅 Planification d'Événement</h2>
-                    <form action="/admin/creer-evenement" method="POST" class="space-y-3">
+                <div class="bg-white/5 backdrop-blur-xl p-6 rounded-3xl shadow-xl border border-white/10">
+                    <h2 class="text-base font-extrabold mb-4 border-b border-white/10 pb-3 text-emerald-300">📅 Planification d'Événement</h2>
+                    <form action="/admin/creer-evenement" method="POST" class="space-y-3.5">
                         <input type="hidden" name="user_id" value="{user['id']}">
-                        <div><label class="block text-xs font-bold mb-1 text-slate-600">Titre de l'événement</label><input type="text" name="titre" placeholder="ex: Assemblée Générale Mensuelle" required class="w-full p-2.5 text-sm border border-slate-300 rounded-xl"></div>
-                        <div><label class="block text-xs font-bold mb-1 text-slate-600">Date</label><input type="date" name="date_reunion" required class="w-full p-2.5 text-sm border border-slate-300 rounded-xl"></div>
-                        <div><label class="block text-xs font-bold mb-1 text-slate-600">Description</label><textarea name="description" rows="2" class="w-full p-2.5 text-sm border border-slate-300 rounded-xl" placeholder="Ordre du jour..."></textarea></div>
-                        <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-xl text-sm font-bold shadow-md transition">Créer l'événement</button>
+                        <div><label class="block text-xs font-bold mb-1 text-slate-300">Titre de l'événement</label><input type="text" name="titre" placeholder="ex: Assemblée Générale Mensuelle" required class="w-full p-3 text-sm bg-slate-900 border border-white/20 rounded-xl text-white"></div>
+                        <div><label class="block text-xs font-bold mb-1 text-slate-300">Date</label><input type="date" name="date_reunion" required class="w-full p-3 text-sm bg-slate-900 border border-white/20 rounded-xl text-white"></div>
+                        <div><label class="block text-xs font-bold mb-1 text-slate-300">Description</label><textarea name="description" rows="2" class="w-full p-3 text-sm bg-slate-900 border border-white/20 rounded-xl text-white" placeholder="Ordre du jour..."></textarea></div>
+                        <button type="submit" class="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white py-3 rounded-xl text-sm font-bold shadow-lg transition">Créer l'événement</button>
                     </form>
                     <div class="mt-4 max-h-40 overflow-y-auto">{evenements_cards or '<p class="text-xs text-slate-400">Aucun événement planifié.</p>'}</div>
                 </div>
-                <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/80">
-                    <h2 class="text-base font-black mb-4 border-b pb-3 text-slate-800">📌 Scanner / Pointage Présence</h2>
-                    <div class="mb-4 bg-emerald-50 p-3 rounded-2xl border border-emerald-200 text-center">
+                <div class="bg-white/5 backdrop-blur-xl p-6 rounded-3xl shadow-xl border border-white/10">
+                    <h2 class="text-base font-extrabold mb-4 border-b border-white/10 pb-3 text-emerald-300">📌 Scanner / Pointage Présence</h2>
+                    <div class="mb-4 bg-emerald-500/10 p-4 rounded-2xl border border-emerald-500/20 text-center backdrop-blur-md">
                         <input type="file" accept="image/*" capture="environment" id="scan-photo-input" onchange="handleScanPhoto(this)" class="hidden">
-                        <button type="button" onclick="document.getElementById('scan-photo-input').click()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2 px-4 rounded-xl shadow-md transition">📷 Scanner Photo / QrCode Présence</button>
-                        <p id="scan-result-text" class="text-[11px] text-emerald-800 font-semibold mt-2">Cliquez pour scanner ou photographier la feuille de présence</p>
+                        <button type="button" onclick="document.getElementById('scan-photo-input').click()" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2.5 px-5 rounded-xl shadow-lg shadow-emerald-600/30 transition inline-flex items-center gap-2">📷 Scanner Photo / QrCode Présence</button>
+                        <p id="scan-result-text" class="text-[11px] text-emerald-300 font-semibold mt-2">Cliquez pour scanner ou photographier la feuille de présence</p>
                     </div>
-                    <form action="/admin/pointer-presence" method="POST" class="space-y-3">
+                    <form action="/admin/pointer-presence" method="POST" class="space-y-3.5">
                         <input type="hidden" name="user_id" value="{user['id']}">
                         <div>
-                            <label class="block text-xs font-bold mb-1 text-slate-600">Sélectionner l'événement</label>
-                            <select name="evenement_titre" id="select-event" onchange="updateEventDate(this)" required class="w-full p-2.5 text-sm border border-slate-300 rounded-xl bg-white font-semibold">
+                            <label class="block text-xs font-bold mb-1 text-slate-300">Sélectionner l'événement</label>
+                            <select name="evenement_titre" id="select-event" onchange="updateEventDate(this)" required class="w-full p-3 text-sm bg-slate-900 border border-white/20 rounded-xl text-white font-semibold">
                                 <option value="">-- Choisir un événement --</option>
                                 {options_evenements_select}
                             </select>
                         </div>
                         <div>
-                            <label class="block text-xs font-bold mb-1 text-slate-600">Date de la réunion</label>
-                            <input type="date" name="date_reunion" id="input-event-date" required class="w-full p-2.5 text-sm border border-slate-300 rounded-xl">
+                            <label class="block text-xs font-bold mb-1 text-slate-300">Date de la réunion</label>
+                            <input type="date" name="date_reunion" id="input-event-date" required class="w-full p-3 text-sm bg-slate-900 border border-white/20 rounded-xl text-white">
                         </div>
                         <div>
-                            <label class="block text-xs font-bold mb-1 text-slate-600">Membre présent</label>
-                            <select name="adherent_id" required class="w-full p-2.5 text-sm border border-slate-300 rounded-xl bg-white font-semibold">
+                            <label class="block text-xs font-bold mb-1 text-slate-300">Membre présent</label>
+                            <select name="adherent_id" required class="w-full p-3 text-sm bg-slate-900 border border-white/20 rounded-xl text-white font-semibold">
                                 <option value="">-- Choisir un membre --</option>
                                 {options_adherents_select}
                             </select>
                         </div>
                         <div>
-                            <label class="block text-xs font-bold mb-1 text-slate-600">Statut</label>
-                            <select name="statut_presence" required class="w-full p-2.5 text-sm border border-slate-300 rounded-xl bg-white font-semibold">
+                            <label class="block text-xs font-bold mb-1 text-slate-300">Statut</label>
+                            <select name="statut_presence" required class="w-full p-3 text-sm bg-slate-900 border border-white/20 rounded-xl text-white font-semibold">
                                 <option value="Present">Présent(e)</option>
                                 <option value="Retard">Retard</option>
                                 <option value="Absent">Absent(e)</option>
                                 <option value="Excuse">Excusé(e)</option>
                             </select>
                         </div>
-                        <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-xl text-sm font-bold shadow-md transition">Valider le pointage</button>
+                        <button type="submit" class="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white py-3 rounded-xl text-sm font-bold shadow-lg transition">Valider le pointage</button>
                     </form>
                 </div>
             </div>
@@ -748,43 +748,40 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
         admin_projet_form = ""
         if is_tresorier:
             admin_projet_form = f"""
-            <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/80 mb-6">
-                <h2 class="text-base font-black mb-4 border-b pb-3 text-slate-800">➕ Proposer / Ajouter un Projet</h2>
-                <form action="/projets-form" method="POST" class="space-y-3">
+            <div class="bg-white/5 backdrop-blur-xl p-6 rounded-3xl shadow-xl border border-white/10 mb-6">
+                <h2 class="text-base font-extrabold mb-4 border-b border-white/10 pb-3 text-emerald-300">➕ Proposer / Ajouter un Projet</h2>
+                <form action="/projets-form" method="POST" class="space-y-3.5">
                     <input type="hidden" name="user_id" value="{user['id']}">
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div><label class="block text-xs font-bold mb-1 text-slate-600">Titre du projet</label><input type="text" name="titre" required class="w-full p-2.5 text-sm border border-slate-300 rounded-xl"></div>
-                        <div><label class="block text-xs font-bold mb-1 text-slate-600">Coût estimé (CFA)</label><input type="number" name="cout" required class="w-full p-2.5 text-sm border border-slate-300 rounded-xl"></div>
+                        <div><label class="block text-xs font-bold mb-1 text-slate-300">Titre du projet</label><input type="text" name="titre" required class="w-full p-3 text-sm bg-slate-900 border border-white/20 rounded-xl text-white"></div>
+                        <div><label class="block text-xs font-bold mb-1 text-slate-300">Coût estimé (CFA)</label><input type="number" name="cout" required class="w-full p-3 text-sm bg-slate-900 border border-white/20 rounded-xl text-white"></div>
                     </div>
-                    <div><label class="block text-xs font-bold mb-1 text-slate-600">Description</label><textarea name="description" rows="2" required class="w-full p-2.5 text-sm border border-slate-300 rounded-xl"></textarea></div>
+                    <div><label class="block text-xs font-bold mb-1 text-slate-300">Description</label><textarea name="description" rows="2" required class="w-full p-3 text-sm bg-slate-900 border border-white/20 rounded-xl text-white"></textarea></div>
                     <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <div><label class="block text-xs font-bold mb-1 text-slate-600">Objectifs</label><input type="text" name="objectifs" class="w-full p-2.5 text-sm border border-slate-300 rounded-xl"></div>
-                        <div><label class="block text-xs font-bold mb-1 text-slate-600">Planning / Chronologie</label><input type="text" name="chronologie" class="w-full p-2.5 text-sm border border-slate-300 rounded-xl"></div>
+                        <div><label class="block text-xs font-bold mb-1 text-slate-300">Objectifs</label><input type="text" name="objectifs" class="w-full p-3 text-sm bg-slate-900 border border-white/20 rounded-xl text-white"></div>
+                        <div><label class="block text-xs font-bold mb-1 text-slate-300">Planning / Chronologie</label><input type="text" name="chronologie" class="w-full p-3 text-sm bg-slate-900 border border-white/20 rounded-xl text-white"></div>
                         <div>
-                            <label class="block text-xs font-bold mb-1 text-slate-600">Statut</label>
-                            <select name="statut" class="w-full p-2.5 text-sm border border-slate-300 rounded-xl bg-white font-semibold">
+                            <label class="block text-xs font-bold mb-1 text-slate-300">Statut</label>
+                            <select name="statut" class="w-full p-3 text-sm bg-slate-900 border border-white/20 rounded-xl text-white font-semibold">
                                 <option value="En cours">En cours</option>
                                 <option value="Planifié">Planifié</option>
                                 <option value="Terminé">Terminé</option>
                             </select>
                         </div>
                     </div>
-                    <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-xl text-sm font-bold shadow-md transition">Publier le projet</button>
+                    <button type="submit" class="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white py-3 rounded-xl text-sm font-bold shadow-lg transition">Publier le projet</button>
                 </form>
             </div>
             """
 
-        # Barre de navigation administrative affichée UNIQUEMENT si l'utilisateur est admin ou trésorier
         navigation_onglets_html = ""
-        contenus_onglets_admin_html = ""
-
         if is_tresorier:
             navigation_onglets_html = f"""
-            <div class="sticky top-0 z-40 bg-white/95 backdrop-blur-md py-3 px-4 rounded-2xl shadow-md border border-slate-200/80 flex flex-wrap gap-2">
-                <button onclick="switchTab('tab-tresorerie')" id="btn-tab-tresorerie" class="tab-btn px-4 py-2 text-xs font-extrabold rounded-xl bg-slate-900 text-white shadow-md transition">💼 Trésorerie</button>
-                <button onclick="switchTab('tab-adherents')" id="btn-tab-adherents" class="tab-btn px-4 py-2 text-xs font-extrabold rounded-xl bg-white text-slate-700 border border-slate-200 shadow-sm hover:bg-slate-50 transition">👥 Annuaire</button>
-                <button onclick="switchTab('tab-pointage')" id="btn-tab-pointage" class="tab-btn px-4 py-2 text-xs font-extrabold rounded-xl bg-white text-slate-700 border border-slate-200 shadow-sm hover:bg-slate-50 transition">📋 Pointage</button>
-                <button onclick="switchTab('tab-projets')" id="btn-tab-projets" class="tab-btn px-4 py-2 text-xs font-extrabold rounded-xl bg-white text-slate-700 border border-slate-200 shadow-sm hover:bg-slate-50 transition">🚀 Projets</button>
+            <div class="sticky top-0 z-40 bg-slate-900/80 backdrop-blur-xl py-3 px-4 rounded-2xl shadow-2xl border border-white/10 flex flex-wrap gap-2">
+                <button onclick="switchTab('tab-tresorerie')" id="btn-tab-tresorerie" class="tab-btn px-4 py-2.5 text-xs font-extrabold rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-lg transition">💼 Trésorerie</button>
+                <button onclick="switchTab('tab-adherents')" id="btn-tab-adherents" class="tab-btn px-4 py-2.5 text-xs font-extrabold rounded-xl bg-white/5 text-slate-300 border border-white/10 hover:bg-white/10 transition">👥 Annuaire</button>
+                <button onclick="switchTab('tab-pointage')" id="btn-tab-pointage" class="tab-btn px-4 py-2.5 text-xs font-extrabold rounded-xl bg-white/5 text-slate-300 border border-white/10 hover:bg-white/10 transition">📋 Pointage</button>
+                <button onclick="switchTab('tab-projets')" id="btn-tab-projets" class="tab-btn px-4 py-2.5 text-xs font-extrabold rounded-xl bg-white/5 text-slate-300 border border-white/10 hover:bg-white/10 transition">🚀 Projets</button>
             </div>
 
             <div id="tab-tresorerie" class="tab-content space-y-6">
@@ -792,18 +789,18 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
             </div>
 
             <div id="tab-adherents" class="tab-content hidden space-y-6">
-                <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/80">
-                    <div class="flex flex-col sm:flex-row justify-between items-center mb-4 border-b pb-3 gap-3">
-                        <h2 class="text-base font-black text-slate-800">👥 Annuaire ({len(all_adherents)})</h2>
+                <div class="bg-white/5 backdrop-blur-xl p-6 rounded-3xl shadow-xl border border-white/10">
+                    <div class="flex flex-col sm:flex-row justify-between items-center mb-5 border-b border-white/10 pb-3 gap-3">
+                        <h2 class="text-base font-extrabold text-emerald-300">👥 Annuaire ({len(all_adherents)})</h2>
                         <div class="flex gap-2 w-full sm:w-auto">
-                            <input type="text" id="search-annuaire" onkeyup="filterAnnuaire()" placeholder="Rechercher par nom, secteur, téléphone..." class="px-3 py-1.5 text-xs border border-slate-300 rounded-xl w-full sm:w-64 bg-slate-50">
-                            <a href="/adherents/export-pdf" target="_blank" class="bg-red-600 hover:bg-red-700 text-white px-3.5 py-1.5 rounded-xl text-xs font-extrabold shadow-md transition whitespace-nowrap">📄 PDF</a>
+                            <input type="text" id="search-annuaire" onkeyup="filterAnnuaire()" placeholder="Rechercher par nom, secteur, téléphone..." class="px-3.5 py-2 text-xs border border-white/20 rounded-xl w-full sm:w-64 bg-slate-900 text-white placeholder-slate-400">
+                            <a href="/adherents/export-pdf" target="_blank" class="bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg transition whitespace-nowrap">📄 PDF</a>
                         </div>
                     </div>
-                    <div class="overflow-x-auto max-h-96 overflow-y-auto border border-slate-200 rounded-2xl">
-                        <table class="w-full text-left bg-white">
-                            <thead class="bg-slate-100 text-[11px] font-bold text-slate-600 uppercase">
-                                <tr><th class="p-3">Nom & Prénom</th><th class="p-3">Rôle</th><th class="p-3">Secteur</th><th class="p-3">Téléphone</th><th class="p-3 text-right">Actions</th></tr>
+                    <div class="overflow-x-auto max-h-96 overflow-y-auto border border-white/10 rounded-2xl bg-black/20">
+                        <table class="w-full text-left">
+                            <thead class="bg-white/5 text-[11px] font-bold text-slate-300 uppercase tracking-wider">
+                                <tr><th class="p-3.5">Nom & Prénom</th><th class="p-3.5">Rôle</th><th class="p-3.5">Secteur</th><th class="p-3.5">Téléphone</th><th class="p-3.5 text-right">Actions</th></tr>
                             </thead>
                             <tbody>{adherents_table_rows}</tbody>
                         </table>
@@ -813,28 +810,28 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
 
             <div id="tab-pointage" class="tab-content hidden space-y-6">
                 {admin_event_pointage_html}
-                <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/80">
-                    <div class="flex justify-between items-center mb-4 border-b pb-3">
-                        <h2 class="text-base font-black text-slate-800">📋 Historique des Pointages</h2>
-                        <input type="text" id="search-pointage" onkeyup="filterPointage()" placeholder="Filtrer par nom, événement..." class="px-3 py-1 text-xs border border-slate-300 rounded-xl w-56 bg-slate-50">
+                <div class="bg-white/5 backdrop-blur-xl p-6 rounded-3xl shadow-xl border border-white/10">
+                    <div class="flex justify-between items-center mb-4 border-b border-white/10 pb-3">
+                        <h2 class="text-base font-extrabold text-emerald-300">📋 Historique des Pointages</h2>
+                        <input type="text" id="search-pointage" onkeyup="filterPointage()" placeholder="Filtrer par nom, événement..." class="px-3.5 py-2 text-xs border border-white/20 rounded-xl w-56 bg-slate-900 text-white placeholder-slate-400">
                     </div>
-                    <div class="overflow-x-auto max-h-96 overflow-y-auto border border-slate-200 rounded-2xl">
-                        <table class="w-full text-left bg-white"><thead class="bg-slate-100 text-[11px] font-bold text-slate-600 uppercase"><tr><th class="p-3">Membre</th><th class="p-3">Événement</th><th class="p-3">Date</th><th class="p-3">Statut</th></tr></thead><tbody id="presence-tbody">{presences_table_rows or '<tr><td colspan="4" class="p-4 text-center text-sm text-slate-400">Aucun pointage enregistré.</td></tr>'}</tbody></table>
+                    <div class="overflow-x-auto max-h-96 overflow-y-auto border border-white/10 rounded-2xl bg-black/20">
+                        <table class="w-full text-left"><thead class="bg-white/5 text-[11px] font-bold text-slate-300 uppercase tracking-wider"><tr><th class="p-3.5">Membre</th><th class="p-3.5">Événement</th><th class="p-3.5">Date</th><th class="p-3.5">Statut</th></tr></thead><tbody id="presence-tbody">{presences_table_rows or '<tr><td colspan="4" class="p-4 text-center text-sm text-slate-400">Aucun pointage enregistré.</td></tr>'}</tbody></table>
                     </div>
                 </div>
             </div>
 
             <div id="tab-projets" class="tab-content hidden space-y-6">
                 {admin_projet_form}
-                <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/80">
-                    <div class="flex justify-between items-center mb-4 border-b pb-3">
-                        <h2 class="text-base font-black text-slate-800">🤝 Demandes d'Aide</h2>
-                        <input type="text" id="search-projets" onkeyup="filterProjets()" placeholder="Filtrer demandes..." class="px-3 py-1 text-xs border border-slate-300 rounded-xl w-48 bg-slate-50">
+                <div class="bg-white/5 backdrop-blur-xl p-6 rounded-3xl shadow-xl border border-white/10">
+                    <div class="flex justify-between items-center mb-4 border-b border-white/10 pb-3">
+                        <h2 class="text-base font-extrabold text-emerald-300">🤝 Demandes d'Aide</h2>
+                        <input type="text" id="search-projets" onkeyup="filterProjets()" placeholder="Filtrer demandes..." class="px-3.5 py-2 text-xs border border-white/20 rounded-xl w-48 bg-slate-900 text-white placeholder-slate-400">
                     </div>
                     <ul class="max-h-60 overflow-y-auto pr-2" id="aides-ul">{aides_admin_html or '<p class="text-sm text-slate-400">Aucune demande.</p>'}</ul>
                 </div>
-                <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/80">
-                    <h2 class="text-base font-black mb-4 border-b pb-3 text-slate-800">🚀 Projets de l'Association</h2>
+                <div class="bg-white/5 backdrop-blur-xl p-6 rounded-3xl shadow-xl border border-white/10">
+                    <h2 class="text-base font-extrabold mb-4 border-b border-white/10 pb-3 text-emerald-300">🚀 Projets de l'Association</h2>
                     <div class="max-h-96 overflow-y-auto pr-2">{projets_cards_html or '<p class="text-xs text-slate-400">Aucun projet enregistré.</p>'}</div>
                 </div>
             </div>
@@ -854,13 +851,13 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
                     if (target) target.classList.remove('hidden');
                     let buttons = document.getElementsByClassName('tab-btn');
                     for (let b of buttons) {{
-                        b.classList.remove('bg-slate-900', 'text-white', 'shadow-md');
-                        b.classList.add('bg-white', 'text-slate-700', 'border', 'border-slate-200', 'shadow-sm');
+                        b.classList.remove('bg-gradient-to-r', 'from-emerald-600', 'to-teal-600', 'text-white', 'shadow-lg');
+                        b.classList.add('bg-white/5', 'text-slate-300', 'border', 'border-white/10');
                     }}
                     let activeBtn = document.getElementById('btn-' + tabId);
                     if (activeBtn) {{
-                        activeBtn.classList.remove('bg-white', 'text-slate-700', 'border', 'border-slate-200', 'shadow-sm');
-                        activeBtn.classList.add('bg-slate-900', 'text-white', 'shadow-md');
+                        activeBtn.classList.remove('bg-white/5', 'text-slate-300', 'border', 'border-white/10');
+                        activeBtn.classList.add('bg-gradient-to-r', 'from-emerald-600', 'to-teal-600', 'text-white', 'shadow-lg');
                     }}
                 }}
                 function openModal(id) {{ let m = document.getElementById('modal-' + id); if(m) m.classList.remove('hidden'); }}
@@ -932,24 +929,24 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
                         let txt = document.getElementById('scan-result-text');
                         if (txt) {{
                             txt.innerText = "Photo scannée avec succès ! Prêt pour le pointage.";
-                            txt.classList.remove('text-emerald-800');
-                            txt.classList.add('text-blue-700', 'font-black');
+                            txt.classList.remove('text-emerald-300');
+                            txt.classList.add('text-emerald-400', 'font-black');
                         }}
                     }}
                 }}
             </script>
         </head>
-        <body class="bg-gradient-to-br from-slate-50 via-slate-100 to-emerald-50 text-slate-800 font-sans min-h-screen py-6 px-4">
+        <body class="bg-gradient-to-tr from-slate-950 via-emerald-950 to-teal-950 text-slate-100 font-sans min-h-screen py-8 px-4">
             <div class="max-w-4xl mx-auto space-y-6">
-                <div class="bg-white p-5 rounded-3xl shadow-sm border border-slate-200/80 flex justify-between items-center backdrop-blur-md">
-                    <div class="flex items-center gap-3">
-                        <div class="w-11 h-11 rounded-2xl bg-emerald-100 flex items-center justify-center text-emerald-800 font-black text-lg shadow-sm">{user.get('prenom','M')[0]}</div>
+                <div class="bg-white/5 backdrop-blur-xl p-5 rounded-3xl shadow-2xl border border-white/10 flex justify-between items-center">
+                    <div class="flex items-center gap-3.5">
+                        <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white font-black text-lg shadow-lg">{user.get('prenom','M')[0]}</div>
                         <div>
-                            <h2 class="text-base font-black text-slate-900">{user.get('prenom','')} {user.get('nom','')}</h2>
-                            <p class="text-xs text-blue-700 uppercase font-extrabold tracking-wider">{user.get('role','')}</p>
+                            <h2 class="text-base font-extrabold text-white">{user.get('prenom','')} {user.get('nom','')}</h2>
+                            <p class="text-xs text-emerald-400 uppercase font-bold tracking-widest">{user.get('role','')}</p>
                         </div>
                     </div>
-                    <a href="/" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md transition">Déconnexion</a>
+                    <a href="/" class="bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg transition">Déconnexion</a>
                 </div>
 
                 {member_specific_html}
