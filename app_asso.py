@@ -13,7 +13,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="69.0")
+app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="70.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -98,7 +98,7 @@ def afficher_portail():
             <title>Tinka ka Mein Haaldi fotti</title>
             <script src="https://cdn.tailwindcss.com"></script>
         </head>
-        <body class="bg-gradient-to-tr from-slate-900 via-emerald-950 to-teal-900 text-slate-100 font-sans antialiased min-h-screen py-10 px-4 flex flex-col justify-between">
+        <body class="bg-gradient-to-tr from-slate-950 via-emerald-950 to-teal-950 text-slate-100 font-sans antialiased min-h-screen py-10 px-4 flex flex-col justify-between">
             <div class="max-w-md mx-auto w-full bg-white/10 backdrop-blur-xl rounded-3xl shadow-2xl p-6 sm:p-8 border border-white/20">
                 <div class="text-center mb-6">
                     <span class="inline-block bg-emerald-500/20 text-emerald-300 text-xs font-extrabold px-4 py-1.5 rounded-full uppercase tracking-widest mb-3 border border-emerald-500/30 shadow-inner">Portail Officiel</span>
@@ -225,15 +225,20 @@ def changer_role(user_id: Optional[int] = Form(None), adherent_id: Optional[int]
 def modifier_adherent(
     user_id: Optional[int] = Form(None), adherent_id: Optional[int] = Form(None),
     nom: Optional[str] = Form(None), prenom: Optional[str] = Form(None),
-    telephone: Optional[str] = Form(None), secteur: Optional[str] = Form(None)
+    telephone: Optional[str] = Form(None), secteur: Optional[str] = Form(None),
+    nouveau_mdp: Optional[str] = Form(None)
 ):
     if not user_id or not adherent_id:
         return RedirectResponse(url="/", status_code=303)
     try:
         tel_norm = normaliser_telephone(telephone)
-        supabase.table("adherents").update({
+        update_data = {
             "nom": nom, "prenom": prenom, "telephone": tel_norm, "secteur": secteur
-        }).eq("id", adherent_id).execute()
+        }
+        if nouveau_mdp and nouveau_mdp.strip():
+            update_data["mot_de_passe"] = hacher_mdp(nouveau_mdp.strip())
+
+        supabase.table("adherents").update(update_data).eq("id", adherent_id).execute()
         return HTMLResponse(content=f"<script>alert('Informations mises à jour avec succès !'); window.location.href='/dashboard?id={user_id}';</script>")
     except Exception as e:
         return HTMLResponse(content=f"<script>alert('Erreur : {str(e)}'); window.location.href='/dashboard?id={user_id}';</script>")
@@ -532,6 +537,10 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
                             <div><label class="block text-xs font-bold mb-1 text-slate-300">Téléphone</label><input type="text" name="telephone" value="{a.get('telephone','')}" required class="w-full p-3 text-sm bg-slate-800 border border-white/20 rounded-xl text-white"></div>
                             <div><label class="block text-xs font-bold mb-1 text-slate-300">Secteur</label><input type="text" name="secteur" value="{a.get('secteur','')}" required class="w-full p-3 text-sm bg-slate-800 border border-white/20 rounded-xl text-white"></div>
                         </div>
+                        <div>
+                            <label class="block text-xs font-bold mb-1 text-amber-300">🔐 Réinitialiser le mot de passe (optionnel)</label>
+                            <input type="password" name="nouveau_mdp" placeholder="Laisser vide pour ne pas changer" class="w-full p-3 text-sm bg-slate-800 border border-amber-500/30 rounded-xl text-white placeholder-slate-500">
+                        </div>
                         <button type="submit" class="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white py-3 rounded-xl text-sm font-bold shadow-lg transition">Enregistrer les modifications</button>
                     </form>
                 </div>
@@ -663,23 +672,68 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
                     <div class="bg-white/90 p-2 rounded-2xl shadow-xl border border-white/20"><img src="data:image/png;base64,{qr_perso_b64}" class="w-14 h-14 rounded-xl"></div>
                 </div>
             </div>
-            <div class="bg-white/5 backdrop-blur-xl p-6 rounded-3xl shadow-xl border border-white/10">
-                <h2 class="text-base font-extrabold mb-4 border-b border-white/10 pb-3 text-emerald-300">📱 Déclarer un Paiement Mobile</h2>
-                <form action="/paiement-mobile-form" method="POST" class="space-y-4">
+
+            <!-- Interface de Paiement Mobile Améliorée -->
+            <div class="bg-white/5 backdrop-blur-xl p-6 rounded-3xl shadow-xl border border-white/10 space-y-4">
+                <div class="border-b border-white/10 pb-3 flex justify-between items-center">
+                    <h2 class="text-base font-extrabold text-emerald-300">📱 Effectuer / Déclarer un Paiement</h2>
+                    <span class="text-[11px] bg-emerald-500/20 text-emerald-300 px-3 py-1 rounded-full font-bold">Wave & Orange Money</span>
+                </div>
+                
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-900/60 p-4 rounded-2xl border border-white/10">
+                    <div class="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5">
+                        <div>
+                            <span class="text-xs text-slate-400 block font-bold">Numéro Wave Association</span>
+                            <span class="text-sm font-mono text-cyan-400 font-extrabold">77 000 00 00</span>
+                        </div>
+                        <button type="button" onclick="navigator.clipboard.writeText('770000000'); alert('Numéro Wave copié !');" class="bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30 px-3 py-1.5 rounded-lg text-xs font-bold transition">📋 Copier</button>
+                    </div>
+                    <div class="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5">
+                        <div>
+                            <span class="text-xs text-slate-400 block font-bold">Numéro Orange Money</span>
+                            <span class="text-sm font-mono text-orange-400 font-extrabold">78 000 00 00</span>
+                        </div>
+                        <button type="button" onclick="navigator.clipboard.writeText('780000000'); alert('Numéro Orange Money copié !');" class="bg-orange-500/20 text-orange-300 hover:bg-orange-500/30 px-3 py-1.5 rounded-lg text-xs font-bold transition">📋 Copier</button>
+                    </div>
+                </div>
+
+                <form action="/paiement-mobile-form" method="POST" class="space-y-3.5">
                     <input type="hidden" name="user_id" value="{user['id']}">
-                    <div class="grid grid-cols-3 gap-2">
-                        <select name="operateur" class="p-3 border border-white/25 rounded-xl text-sm bg-slate-900 text-white font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-400"><option value="Wave">Wave</option><option value="OrangeMoney">Orange Money</option></select>
-                        <input type="text" name="telephone_paiement" value="{user.get('telephone','')}" required class="p-3 border border-white/25 rounded-xl text-sm bg-slate-900/60 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-400" placeholder="Mon Tél">
-                        <input type="text" name="numero_recepteur" required class="p-3 border border-white/25 rounded-xl text-sm bg-slate-900/60 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-400" placeholder="N° Récepteur">
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div>
+                            <label class="block text-xs font-bold mb-1 text-slate-300">Opérateur</label>
+                            <select name="operateur" class="w-full p-3 border border-white/20 rounded-xl text-sm bg-slate-900 text-white font-semibold">
+                                <option value="Wave">Wave</option>
+                                <option value="OrangeMoney">Orange Money</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold mb-1 text-slate-300">Mon Numéro de Tél</label>
+                            <input type="text" name="telephone_paiement" value="{user.get('telephone','')}" required class="w-full p-3 border border-white/20 rounded-xl text-sm bg-slate-900/60 text-white">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold mb-1 text-slate-300">Numéro Récepteur</label>
+                            <input type="text" name="numero_recepteur" required class="w-full p-3 border border-white/20 rounded-xl text-sm bg-slate-900/60 text-white" placeholder="ex: 770000000">
+                        </div>
                     </div>
-                    <div class="grid grid-cols-3 gap-2">
-                        <input type="text" name="reference_transaction" required class="p-3 border border-white/25 rounded-xl text-sm bg-slate-900/60 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-400" placeholder="Réf. Transaction">
-                        <input type="number" name="montant" required class="p-3 border border-white/25 rounded-xl text-sm bg-slate-900/60 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-400" placeholder="Montant">
-                        <input type="text" name="periode" required class="p-3 border border-white/25 rounded-xl text-sm bg-slate-900/60 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-400" placeholder="Mois (ex: 2026-09)">
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div>
+                            <label class="block text-xs font-bold mb-1 text-slate-300">Réf. de Transaction</label>
+                            <input type="text" name="reference_transaction" required class="w-full p-3 border border-white/20 rounded-xl text-sm bg-slate-900/60 text-white" placeholder="Ex: WV-2026...">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold mb-1 text-slate-300">Montant Versé (CFA)</label>
+                            <input type="number" name="montant" required class="w-full p-3 border border-white/20 rounded-xl text-sm bg-slate-900/60 text-white" placeholder="ex: 5000">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold mb-1 text-slate-300">Période / Mois</label>
+                            <input type="text" name="periode" required class="w-full p-3 border border-white/20 rounded-xl text-sm bg-slate-900/60 text-white" placeholder="ex: 2026-09">
+                        </div>
                     </div>
-                    <button type="submit" class="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold py-3 rounded-xl text-sm shadow-lg shadow-blue-600/30 transition">Soumettre la déclaration</button>
+                    <button type="submit" class="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold py-3 rounded-xl text-sm shadow-lg shadow-blue-600/30 transition">Soumettre la déclaration de paiement</button>
                 </form>
             </div>
+
             <div class="bg-white/5 backdrop-blur-xl p-6 rounded-3xl shadow-xl border border-white/10">
                 <h2 class="text-base font-extrabold mb-4 border-b border-white/10 pb-3 text-emerald-300">📋 Mes Cotisations & Reçus</h2>
                 <ul class="max-h-60 overflow-y-auto pr-2">{mois_payes_html or '<p class="text-sm text-slate-400">Aucun versement enregistré pour le moment.</p>'}</ul>
