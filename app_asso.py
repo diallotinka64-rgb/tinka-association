@@ -13,7 +13,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="73.0")
+app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="74.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -321,9 +321,9 @@ def paiement_rapide(
             "adherent_id": user_id, "montant": montant or 5000, "periode": periode or str(datetime.date.today())[:7],
             "mode_paiement": mode, "statut_paiement": "en_attente"
         }).execute()
-        return HTMLResponse(content=f"<script>alert('Demande de paiement envoyée avec succès !'); window.location.href='/dashboard?id={user_id}';</script>")
+        return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
     except Exception as e:
-        return HTMLResponse(content=f"<script>alert('Erreur : {str(e)}'); window.location.href='/dashboard?id={user_id}';</script>")
+        return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
 
 @app.api_route("/projets-form", methods=["GET", "POST"], response_class=HTMLResponse)
 @app.api_route("/projets-form/", methods=["GET", "POST"], response_class=HTMLResponse)
@@ -438,7 +438,7 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
         param_res = supabase.table("parametres").select("solde_initial").eq("id", 1).execute()
         solde_initial = param_res.data[0]['solde_initial'] if param_res.data else 0.0
 
-        cotisations_caisse = sum([c['montant'] for c in all_cotisations if "regularisation" not in str(c.get('mode_paiement', '')) and c.get('statut_paiement') == 'valide'])
+        cotisations_caisse = sum([c['montant'] for c in all_cotisations if "regularisation" not in str(c.get('mode_paiement', '')) and c.get('statut_paiement'] == 'valide'])
         total_aides_approuvees = sum([ai['montant_demande'] for ai in all_aides if ai.get('statut_validation') == 'approuve'])
         total_dec = sum([d['montant'] for d in all_decaissements])
         
