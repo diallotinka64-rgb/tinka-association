@@ -13,7 +13,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="77.0")
+app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="78.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -314,20 +314,64 @@ def initier_paiement_passerelle(
 ):
     if not user_id:
         return RedirectResponse(url="/", status_code=303)
+    return RedirectResponse(url=f"/simulation-page-paiement?user_id={user_id}&montant={montant}&periode={periode}&operateur={operateur}", status_code=status.HTTP_303_SEE_OTHER)
+
+@app.get("/simulation-page-paiement", response_class=HTMLResponse)
+def simulation_page_paiement(user_id: int, montant: float, periode: str, operateur: str):
+    return f"""
+    <!DOCTYPE html>
+    <html lang="fr">
+    <head>
+        <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Passerelle de Paiement Sécurisée - Test</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+    </head>
+    <body class="bg-slate-950 text-slate-100 font-sans min-h-screen flex items-center justify-center p-4">
+        <div class="max-w-md w-auto bg-slate-900 border border-white/20 rounded-3xl p-8 shadow-2xl text-center space-y-6">
+            <div class="inline-block bg-cyan-500/20 text-cyan-300 px-4 py-1.5 rounded-full text-xs font-extrabold uppercase border border-cyan-500/30">
+                Passerelle Sandbox : {operateur}
+            </div>
+            <div>
+                <h1 class="text-xl font-black text-white">Validation du Paiement</h1>
+                <p class="text-xs text-slate-400 mt-1">Association Tinka ka Mein Haaldi fotti</p>
+            </div>
+            <div class="bg-black/40 p-4 rounded-2xl border border-white/10 space-y-2 text-sm">
+                <div class="flex justify-between"><span class="text-slate-400">Montant :</span><span class="font-bold text-emerald-400">{formater_montant(montant)} CFA</span></div>
+                <div class="flex justify-between"><span class="text-slate-400">Période :</span><span class="font-bold text-white">{periode}</span></div>
+            </div>
+            <form action="/valider-simulation-paiement" method="POST" class="space-y-3">
+                <input type="hidden" name="user_id" value="{user_id}">
+                <input type="hidden" name="montant" value="{montant}">
+                <input type="hidden" name="periode" value="{periode}">
+                <input type="hidden" name="operateur" value="{operateur}">
+                <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-emerald-600/30 transition text-sm">
+                    ✅ Simuler un Paiement Réussi
+                </button>
+                <a href="/dashboard?id={user_id}" class="block w-full bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-3 rounded-xl transition text-sm">
+                    ❌ Annuler & Retourner
+                </a>
+            </form>
+        </div>
+    </body>
+    </html>
+    """
+
+@app.api_route("/valider-simulation-paiement", methods=["POST"], response_class=HTMLResponse)
+def valider_simulation_paiement(
+    user_id: Optional[int] = Form(None), montant: Optional[float] = Form(None), 
+    periode: Optional[str] = Form(None), operateur: Optional[str] = Form(None)
+):
+    if not user_id:
+        return RedirectResponse(url="/", status_code=303)
     try:
-        # Enregistrement initial en attente
         mode = f"passerelle_{str(operateur).lower()}"
-        res = supabase.table("cotisations").insert({
+        supabase.table("cotisations").insert({
             "adherent_id": user_id, "montant": montant or 5000, "periode": periode or str(datetime.date.today())[:7],
-            "mode_paiement": mode, "statut_paiement": "en_attente"
+            "mode_paiement": mode, "statut_paiement": "valide"
         }).execute()
-        
-        # Simulation de redirection vers une paserelle de test gratuite (ex: Sandbox CinetPay / PayTech)
-        # Dès que vous aurez vos clés, vous pourrez remplacer cette URL par l'appel API réel de la passerelle.
-        url_simulation_passerelle = f"/simulation-page-paiement?user_id={user_id}&montant={montant}&periode={periode}&operateur={operateurs}"
-        return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
+        return HTMLResponse(content=f"<script>alert('Paiement validé avec succès par la passerelle ! Le reçu est disponible.'); window.location.href='/dashboard?id={user_id}';</script>")
     except Exception as e:
-        return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
+        return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=303)
 
 @app.api_route("/projets-form", methods=["GET", "POST"], response_class=HTMLResponse)
 @app.api_route("/projets-form/", methods=["GET", "POST"], response_class=HTMLResponse)
@@ -442,7 +486,7 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
         param_res = supabase.table("parametres").select("solde_initial").eq("id", 1).execute()
         solde_initial = param_res.data[0]['solde_initial'] if param_res.data else 0.0
 
-        cotisations_caisse = sum([c['montant'] for c in all_cotisations if "regularisation" not in str(c.get('mode_paiement', '')) and c.get('statut_paiement') == 'valide'])
+        cotisations_caisse = sum([c['montant'] for c in all_cotisations if "regularisation" not in str(c.get('mode_paiement', '')) and c.get('statut_paiement'] == 'valide'])
         total_aides_approuvees = sum([ai['montant_demande'] for ai in all_aides if ai.get('statut_validation') == 'approuve'])
         total_dec = sum([d['montant'] for d in all_decaissements])
         
@@ -472,7 +516,7 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
         for a in all_actifs:
             cotis_membre = []
             for c in all_cotisations:
-                if c.get('adherent_id') == a['id'] and c.get('statut_paiement') == 'valide':
+                if c.get('adherent_id') == a['id'] and c.get('statut_paiement'] == 'valide':
                     cotis_membre.append(c.get('periode'))
             
             mois_manquants = []
