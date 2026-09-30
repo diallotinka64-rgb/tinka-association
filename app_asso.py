@@ -13,7 +13,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="70.0")
+app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="71.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -307,22 +307,22 @@ def valider_paiement_mobile(user_id: Optional[int] = Form(None), paiement_id: Op
         return HTMLResponse(content=f"<script>alert('Paiement mobile validé avec succès ! Le reçu est désormais disponible pour le membre.'); window.location.href='/dashboard?id={user_id}';</script>")
     return RedirectResponse(url="/", status_code=303)
 
-@app.api_route("/paiement-mobile-form", methods=["GET", "POST"], response_class=HTMLResponse)
-@app.api_route("/paiement-mobile-form/", methods=["GET", "POST"], response_class=HTMLResponse)
-def paiement_mobile(
-    user_id: Optional[int] = Form(None), montant: Optional[float] = Form(None), periode: Optional[str] = Form(None),
-    operateur: Optional[str] = Form(None), telephone_paiement: Optional[str] = Form(None),
-    reference_transaction: Optional[str] = Form(None), numero_recepteur: Optional[str] = Form(None)
+@app.api_route("/paiement-rapide", methods=["GET", "POST"], response_class=HTMLResponse)
+@app.api_route("/paiement-rapide/", methods=["GET", "POST"], response_class=HTMLResponse)
+def paiement_rapide(
+    user_id: Optional[int] = Form(None), montant: Optional[float] = Form(None), 
+    periode: Optional[str] = Form(None), operateur: Optional[str] = Form(None)
 ):
     if not user_id:
         return RedirectResponse(url="/", status_code=303)
     try:
-        mode = f"mobile_{str(operateur).lower()} (Réf: {reference_transaction} | Vers: {numero_recepteur} | Tél: {telephone_paiement})"
+        # Enregistrement direct et instantané de la demande de paiement simple
+        mode = f"1-clic_{str(operateur).lower()}"
         supabase.table("cotisations").insert({
-            "adherent_id": user_id, "montant": montant or 0, "periode": periode or "",
+            "adherent_id": user_id, "montant": montant or 5000, "periode": periode or str(datetime.date.today())[:7],
             "mode_paiement": mode, "statut_paiement": "en_attente"
         }).execute()
-        return HTMLResponse(content=f"<script>alert('Paiement déclaré avec succès ! En attente de validation par le trésorier.'); window.location.href='/dashboard?id={user_id}';</script>")
+        return HTMLResponse(content=f"<script>alert('Demande de paiement enregistrée ! Le trésorier validera dès réception sur {operateur}.'); window.location.href='/dashboard?id={user_id}';</script>")
     except Exception as e:
         return HTMLResponse(content=f"<script>alert('Erreur : {str(e)}'); window.location.href='/dashboard?id={user_id}';</script>")
 
@@ -549,7 +549,7 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
 
         presences_table_rows = "".join([f"<tr class='border-b border-white/5 text-sm presence-row hover:bg-white/5 transition' data-nom='{str(p.get('adherents',{}).get('prenom','')).lower()} {str(p.get('adherents',{}).get('nom','')).lower()}' data-event='{str(p.get('evenement_titre','')).lower()}'><td class='p-3.5 font-bold text-white'>{p.get('adherents',{}).get('prenom','')} {p.get('adherents',{}).get('nom','')}</td><td class='p-3.5 text-slate-300'>{p.get('evenement_titre','')}</td><td class='p-3.5 text-slate-400'>{formater_date(p.get('date_reunion',''))}</td><td class='p-3.5'><span class='text-xs px-3 py-1 rounded-full font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'>{p.get('statut_presence','')}</span></td></tr>" for p in all_presences])
         
-        paiements_mobiles_admin = [c for c in all_cotisations if "mobile_" in str(c.get('mode_paiement', ''))]
+        paiements_mobiles_admin = [c for c in all_cotisations if "1-clic_" in str(c.get('mode_paiement', '')) or "mobile_" in str(c.get('mode_paiement', ''))]
         paiements_mobiles_rows = ""
         for pm in paiements_mobiles_admin:
             adh_pm = pm.get('adherents', {}) or {}
@@ -673,64 +673,38 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
                 </div>
             </div>
 
-            <!-- Interface de Paiement Mobile Améliorée -->
+            <!-- Interface 1-Clic ultra simple pour les membres -->
             <div class="bg-white/5 backdrop-blur-xl p-6 rounded-3xl shadow-xl border border-white/10 space-y-4">
                 <div class="border-b border-white/10 pb-3 flex justify-between items-center">
-                    <h2 class="text-base font-extrabold text-emerald-300">📱 Effectuer / Déclarer un Paiement</h2>
-                    <span class="text-[11px] bg-emerald-500/20 text-emerald-300 px-3 py-1 rounded-full font-bold">Wave & Orange Money</span>
+                    <h2 class="text-base font-extrabold text-emerald-300">⚡ Paiement Rapide (1-Clic)</h2>
+                    <span class="text-[11px] bg-emerald-500/20 text-emerald-300 px-3 py-1 rounded-full font-bold">Sans référence compliquée</span>
                 </div>
                 
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-900/60 p-4 rounded-2xl border border-white/10">
-                    <div class="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5">
-                        <div>
-                            <span class="text-xs text-slate-400 block font-bold">Numéro Wave Association</span>
-                            <span class="text-sm font-mono text-cyan-400 font-extrabold">77 000 00 00</span>
-                        </div>
-                        <button type="button" onclick="navigator.clipboard.writeText('770000000'); alert('Numéro Wave copié !');" class="bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30 px-3 py-1.5 rounded-lg text-xs font-bold transition">📋 Copier</button>
-                    </div>
-                    <div class="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5">
-                        <div>
-                            <span class="text-xs text-slate-400 block font-bold">Numéro Orange Money</span>
-                            <span class="text-sm font-mono text-orange-400 font-extrabold">78 000 00 00</span>
-                        </div>
-                        <button type="button" onclick="navigator.clipboard.writeText('780000000'); alert('Numéro Orange Money copié !');" class="bg-orange-500/20 text-orange-300 hover:bg-orange-500/30 px-3 py-1.5 rounded-lg text-xs font-bold transition">📋 Copier</button>
-                    </div>
-                </div>
+                <p class="text-xs text-slate-300 leading-relaxed">
+                    Cliquez directement sur l'application de votre choix pour régler votre cotisation. Le système notifiera le trésorier instantanément.
+                </p>
 
-                <form action="/paiement-mobile-form" method="POST" class="space-y-3.5">
+                <form action="/paiement-rapide" method="POST" class="space-y-4">
                     <input type="hidden" name="user_id" value="{user['id']}">
-                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
-                            <label class="block text-xs font-bold mb-1 text-slate-300">Opérateur</label>
-                            <select name="operateur" class="w-full p-3 border border-white/20 rounded-xl text-sm bg-slate-900 text-white font-semibold">
-                                <option value="Wave">Wave</option>
-                                <option value="OrangeMoney">Orange Money</option>
-                            </select>
+                            <label class="block text-xs font-bold mb-1 text-slate-300">Mois concerné</label>
+                            <input type="text" name="periode" value="{f"{annee_actuelle}-{mois_actuel:02d}"}" required class="w-full p-3 border border-white/20 rounded-xl text-sm bg-slate-900/60 text-white text-center font-bold">
                         </div>
                         <div>
-                            <label class="block text-xs font-bold mb-1 text-slate-300">Mon Numéro de Tél</label>
-                            <input type="text" name="telephone_paiement" value="{user.get('telephone','')}" required class="w-full p-3 border border-white/20 rounded-xl text-sm bg-slate-900/60 text-white">
-                        </div>
-                        <div>
-                            <label class="block text-xs font-bold mb-1 text-slate-300">Numéro Récepteur</label>
-                            <input type="text" name="numero_recepteur" required class="w-full p-3 border border-white/20 rounded-xl text-sm bg-slate-900/60 text-white" placeholder="ex: 770000000">
+                            <label class="block text-xs font-bold mb-1 text-slate-300">Montant (CFA)</label>
+                            <input type="number" name="montant" value="5000" required class="w-full p-3 border border-white/20 rounded-xl text-sm bg-slate-900/60 text-white text-center font-bold">
                         </div>
                     </div>
-                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <div>
-                            <label class="block text-xs font-bold mb-1 text-slate-300">Réf. de Transaction</label>
-                            <input type="text" name="reference_transaction" required class="w-full p-3 border border-white/20 rounded-xl text-sm bg-slate-900/60 text-white" placeholder="Ex: WV-2026...">
-                        </div>
-                        <div>
-                            <label class="block text-xs font-bold mb-1 text-slate-300">Montant Versé (CFA)</label>
-                            <input type="number" name="montant" required class="w-full p-3 border border-white/20 rounded-xl text-sm bg-slate-900/60 text-white" placeholder="ex: 5000">
-                        </div>
-                        <div>
-                            <label class="block text-xs font-bold mb-1 text-slate-300">Période / Mois</label>
-                            <input type="text" name="periode" required class="w-full p-3 border border-white/20 rounded-xl text-sm bg-slate-900/60 text-white" placeholder="ex: 2026-09">
-                        </div>
+                    
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                        <button type="submit" name="operateur" value="Wave" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-black py-3.5 px-4 rounded-2xl shadow-lg shadow-cyan-600/30 transition flex items-center justify-center gap-2 text-sm">
+                            💙 Payer 1-Clic avec Wave
+                        </button>
+                        <button type="submit" name="operateur" value="OrangeMoney" class="w-full bg-orange-600 hover:bg-orange-500 text-white font-black py-3.5 px-4 rounded-2xl shadow-lg shadow-orange-600/30 transition flex items-center justify-center gap-2 text-sm">
+                            🧡 Payer 1-Clic avec Orange Money
+                        </button>
                     </div>
-                    <button type="submit" class="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold py-3 rounded-xl text-sm shadow-lg shadow-blue-600/30 transition">Soumettre la déclaration de paiement</button>
                 </form>
             </div>
 
