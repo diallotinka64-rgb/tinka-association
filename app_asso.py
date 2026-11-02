@@ -1,456 +1,3 @@
-from fastapi import FastAPI, HTTPException, Depends, Form, status, Query, UploadFile, File
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, StreamingResponse, RedirectResponse
-from fastapi.staticfiles import StaticFiles
-import io
-import os
-import datetime
-from typing import Optional, List
-import bcrypt
-import qrcode
-import base64
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
-from supabase import create_client, Client
-
-app = FastAPI(title="API Gestion Tinka ka Mein Haaldi fotti", version="79.0")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-SUPABASE_URL = os.getenv("SUPABASE_URL", "")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-
-UPLOAD_DIR = "static/uploads"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-app.mount("/static", StaticFiles(directory="static"), name="static")
-
-def normaliser_telephone(tel: str) -> str:
-    if not tel:
-        return ""
-    nettoye = "".join([c for c in tel if c.isdigit()])
-    for indicatif in ["221", "224", "223", "225", "33"]:
-        if nettoye.startswith(indicatif) and len(nettoye) > 9:
-            nettoye = nettoye[len(indicatif):]
-            break
-    return nettoye
-
-def formater_montant(montant: float) -> str:
-    try:
-        return f"{int(montant):,}".replace(",", " ")
-    except Exception:
-        return str(montant)
-
-def formater_date(date_str: str) -> str:
-    if not date_str:
-        return ""
-    try:
-        nettoi = date_str[:10]
-        annee, mois, jour = nettoi.split("-")
-        return f"{jour}-{mois}-{annee}"
-    except Exception:
-        return date_str
-
-def hacher_mdp(mdp: str) -> str:
-    return bcrypt.hashpw(mdp.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-
-def verifier_mdp(mdp: str, hashed: str) -> bool:
-    try:
-        return bcrypt.checkpw(mdp.encode('utf-8'), hashed.encode('utf-8'))
-    except Exception:
-        return mdp == hashed
-
-def generer_qrcode_base64(url: str) -> str:
-    qr = qrcode.QRCode(box_size=4, border=2)
-    qr.add_data(url)
-    qr.make(fit=True)
-    img = qr.make_image(fill_color="black", back_color="white")
-    buffered = io.BytesIO()
-    img.save(buffered, format="PNG")
-    return base64.b64encode(buffered.getvalue()).decode("utf-8")
-
-async def fichier_vers_base64(file_upload: UploadFile) -> str:
-    if not file_upload or not file_upload.filename:
-        return ""
-    contents = await file_upload.read()
-    if not contents:
-        return ""
-    encoded = base64.b64encode(contents).decode("utf-8")
-    return f"data:image/jpeg;base64,{encoded}"
-
-@app.get("/", response_class=HTMLResponse)
-def afficher_portail():
-    try:
-        url_site = "https://tinka-association.onrender.com"
-        qr_b64 = generer_qrcode_base64(url_site)
-        return f"""
-        <!DOCTYPE html>
-        <html lang="fr">
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Tinka ka Mein Haaldi fotti</title>
-            <script src="https://cdn.tailwindcss.com"></script>
-        </head>
-        <body class="bg-gradient-to-tr from-slate-950 via-emerald-950 to-teal-950 text-slate-100 font-sans antialiased min-h-screen py-10 px-4 flex flex-col justify-between">
-            <div class="max-w-md mx-auto w-full bg-white/10 backdrop-blur-xl rounded-3xl shadow-2xl p-6 sm:p-8 border border-white/20">
-                <div class="text-center mb-6">
-                    <span class="inline-block bg-emerald-500/20 text-emerald-300 text-xs font-extrabold px-4 py-1.5 rounded-full uppercase tracking-widest mb-3 border border-emerald-500/30 shadow-inner">Portail Officiel</span>
-                    <h1 class="text-2xl font-black text-white tracking-tight">Tinka ka Mein Haaldi fotti</h1>
-                    <p class="text-xs text-slate-300 mt-1 font-medium">Gestion administrative, financière & Daara</p>
-                </div>
-                <div class="flex justify-center mb-6">
-                    <div class="bg-white/90 p-3.5 rounded-2xl shadow-lg text-center backdrop-blur-sm border border-white/30">
-                        <img src="data:image/png;base64,{qr_b64}" alt="QR Code" class="w-28 h-28 mx-auto mb-2 rounded-xl">
-                        <span class="text-[11px] font-bold text-slate-700">Scannez pour accéder au site</span>
-                    </div>
-                </div>
-                <div class="space-y-6">
-                    <div class="bg-white/5 p-5 rounded-2xl border border-white/10 backdrop-blur-md shadow-inner">
-                        <h2 class="text-xs font-extrabold text-emerald-300 mb-3 flex items-center gap-2 uppercase tracking-wider">🔐 Connexion</h2>
-                        <form action="/login-form" method="POST" class="space-y-3.5">
-                            <div>
-                                <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-300 mb-1">Numéro de téléphone</label>
-                                <input type="text" name="telephone" placeholder="ex: 771234567 ou 221771234567" required class="w-full px-3.5 py-2.5 text-sm bg-slate-900/50 border border-white/20 rounded-xl text-white placeholder-slate-400 focus:ring-2 focus:ring-emerald-400 focus:outline-none transition shadow-sm">
-                            </div>
-                            <div>
-                                <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-300 mb-1">Mot de passe</label>
-                                <input type="password" name="mot_de_passe" required class="w-full px-3.5 py-2.5 text-sm bg-slate-900/50 border border-white/20 rounded-xl text-white placeholder-slate-400 focus:ring-2 focus:ring-emerald-400 focus:outline-none transition shadow-sm">
-                            </div>
-                            <button type="submit" class="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold py-2.5 px-4 rounded-xl shadow-lg shadow-blue-600/30 transition duration-200 text-sm">Se connecter</button>
-                        </form>
-                    </div>
-                    <div class="bg-white/5 p-5 rounded-2xl border border-white/10 backdrop-blur-md shadow-inner">
-                        <h2 class="text-xs font-extrabold text-emerald-300 mb-3 flex items-center gap-2 uppercase tracking-wider">📝 Nouvel Adhérent</h2>
-                        <form action="/adherents-form" method="POST" enctype="multipart/form-data" class="space-y-3">
-                            <div class="grid grid-cols-2 gap-2">
-                                <div><label class="block text-[11px] font-bold text-slate-300 mb-1">Nom</label><input type="text" name="nom" required class="w-full px-3 py-2 text-sm bg-slate-900/50 border border-white/20 rounded-xl text-white shadow-sm"></div>
-                                <div><label class="block text-[11px] font-bold text-slate-300 mb-1">Prénom</label><input type="text" name="prenom" required class="w-full px-3 py-2 text-sm bg-slate-900/50 border border-white/20 rounded-xl text-white shadow-sm"></div>
-                            </div>
-                            <div><label class="block text-[11px] font-bold text-slate-300 mb-1">Téléphone</label><input type="text" name="telephone" placeholder="ex: 776510244" required class="w-full px-3 py-2 text-sm bg-slate-900/50 border border-white/20 rounded-xl text-white shadow-sm"></div>
-                            <div><label class="block text-[11px] font-bold text-slate-300 mb-1">Adresse</label><input type="text" name="adresse" required class="w-full px-3 py-2 text-sm bg-slate-900/50 border border-white/20 rounded-xl text-white shadow-sm"></div>
-                            <div><label class="block text-[11px] font-bold text-slate-300 mb-1">Secteur</label><input type="text" name="secteur" required class="w-full px-3 py-2 text-sm bg-slate-900/50 border border-white/20 rounded-xl text-white shadow-sm"></div>
-                            <div><label class="block text-[11px] font-bold text-slate-300 mb-1">Photo de profil</label><input type="file" name="file_photo" accept="image/*" class="w-full text-xs text-slate-300 file:py-2 file:px-3 file:rounded-xl file:border-0 file:bg-emerald-500/20 file:text-emerald-300 font-semibold"></div>
-                            <div><label class="block text-[11px] font-bold text-slate-300 mb-1">Mot de passe</label><input type="password" name="mot_de_passe" required class="w-full px-3 py-2 text-sm bg-slate-900/50 border border-white/20 rounded-xl text-white shadow-sm"></div>
-                            <button type="submit" class="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold py-2.5 px-4 rounded-xl shadow-lg shadow-emerald-600/30 text-sm mt-1 transition duration-200">S'inscrire</button>
-                        </form>
-                    </div>
-                </div>
-            </div>
-        </body>
-        </html>
-        """
-    except Exception as e:
-        return HTMLResponse(content=f"<h3>Erreur critique :</h3><p>{str(e)}</p>", status_code=500)
-
-@app.api_route("/login-form", methods=["GET", "POST"], response_class=HTMLResponse)
-@app.api_route("/login-form/", methods=["GET", "POST"], response_class=HTMLResponse)
-def login_form(telephone: Optional[str] = Form(None), mot_de_passe: Optional[str] = Form(None)):
-    if not telephone or not mot_de_passe:
-        return RedirectResponse(url="/", status_code=303)
-    try:
-        tel_norm = normaliser_telephone(telephone)
-        res = supabase.table("adherents").select("*").execute()
-        users = res.data or []
-        
-        user = None
-        for u in users:
-            if normaliser_telephone(u.get('telephone', '')) == tel_norm:
-                user = u
-                break
-
-        if not user:
-            return HTMLResponse(content="<script>alert('Numéro de téléphone ou mot de passe incorrect.'); window.location.href='/';</script>", status_code=401)
-        
-        if not verifier_mdp(mot_de_passe, user['mot_de_passe']):
-            return HTMLResponse(content="<script>alert('Numéro de téléphone ou mot de passe incorrect.'); window.location.href='/';</script>", status_code=401)
-        
-        if user.get('statut') != 'actif':
-            return HTMLResponse(content="<script>alert('Votre compte est en attente de validation par l\\'administrateur.'); window.location.href='/';</script>", status_code=403)
-        
-        return RedirectResponse(url=f"/dashboard?id={user['id']}", status_code=status.HTTP_303_SEE_OTHER)
-    except Exception as e:
-        return HTMLResponse(content=f"<h3>Erreur de connexion Supabase :</h3><p>{str(e)}</p><a href='/'>Retour</a>", status_code=500)
-
-@app.api_route("/adherents-form", methods=["GET", "POST"], response_class=HTMLResponse)
-@app.api_route("/adherents-form/", methods=["GET", "POST"], response_class=HTMLResponse)
-async def creer_adherent_form(
-    nom: Optional[str] = Form(None), prenom: Optional[str] = Form(None), telephone: Optional[str] = Form(None),
-    adresse: Optional[str] = Form(None), secteur: Optional[str] = Form(None),
-    mot_de_passe: Optional[str] = Form(None), file_photo: UploadFile = File(None)
-):
-    if not telephone:
-        return RedirectResponse(url="/", status_code=303)
-    try:
-        tel_norm = normaliser_telephone(telephone)
-        
-        res_all = supabase.table("adherents").select("telephone").execute()
-        existing_users = res_all.data or []
-        for eu in existing_users:
-            if normaliser_telephone(eu.get('telephone', '')) == tel_norm:
-                return HTMLResponse(content="<script>alert('Erreur : Ce numéro de téléphone est déjà associé à un compte existant.'); window.location.href='/';</script>")
-
-        photo_b64 = await fichier_vers_base64(file_photo)
-        mdp_securise = hacher_mdp(mot_de_passe or "123456")
-        
-        supabase.table("adherents").insert({
-            "nom": nom or "", "prenom": prenom or "", "email": f"{tel_norm}@tinka.local", "telephone": tel_norm,
-            "adresse": adresse or "", "secteur": secteur or "", "photo_profil": photo_b64, "mot_de_passe": mdp_securise
-        }).execute()
-        return HTMLResponse(content="<script>alert('Compte créé avec succès ! En attente de validation.'); window.location.href='/';</script>")
-    except Exception as e:
-        return HTMLResponse(content=f"<script>alert('Erreur lors de l\\'inscription : {str(e)}'); window.location.href='/';</script>")
-
-@app.api_route("/admin/valider-adherent", methods=["GET", "POST"], response_class=HTMLResponse)
-def valider_adherent(user_id: Optional[int] = Form(None), adherent_id: Optional[int] = Form(None)):
-    if user_id and adherent_id:
-        supabase.table("adherents").update({"statut": "actif"}).eq("id", adherent_id).execute()
-        return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
-    return RedirectResponse(url="/", status_code=303)
-
-@app.api_route("/admin/changer-role", methods=["GET", "POST"], response_class=HTMLResponse)
-def changer_role(user_id: Optional[int] = Form(None), adherent_id: Optional[int] = Form(None), nouveau_role: Optional[str] = Form(None)):
-    if user_id and adherent_id and nouveau_role:
-        supabase.table("adherents").update({"role": nouveau_role}).eq("id", adherent_id).execute()
-        return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
-    return RedirectResponse(url="/", status_code=303)
-
-@app.api_route("/admin/modifier-adherent", methods=["GET", "POST"], response_class=HTMLResponse)
-def modifier_adherent(
-    user_id: Optional[int] = Form(None), adherent_id: Optional[int] = Form(None),
-    nom: Optional[str] = Form(None), prenom: Optional[str] = Form(None),
-    telephone: Optional[str] = Form(None), secteur: Optional[str] = Form(None),
-    nouveau_mdp: Optional[str] = Form(None)
-):
-    if not user_id or not adherent_id:
-        return RedirectResponse(url="/", status_code=303)
-    try:
-        tel_norm = normaliser_telephone(telephone)
-        update_data = {
-            "nom": nom, "prenom": prenom, "telephone": tel_norm, "secteur": secteur
-        }
-        if nouveau_mdp and nouveau_mdp.strip():
-            update_data["mot_de_passe"] = hacher_mdp(nouveau_mdp.strip())
-
-        supabase.table("adherents").update(update_data).eq("id", adherent_id).execute()
-        return HTMLResponse(content=f"<script>alert('Informations mises à jour avec succès !'); window.location.href='/dashboard?id={user_id}';</script>")
-    except Exception as e:
-        return HTMLResponse(content=f"<script>alert('Erreur : {str(e)}'); window.location.href='/dashboard?id={user_id}';</script>")
-
-@app.api_route("/admin/maj-solde-initial", methods=["GET", "POST"], response_class=HTMLResponse)
-def maj_solde_initial(user_id: Optional[int] = Form(None), solde_initial: Optional[float] = Form(None)):
-    if not user_id or solde_initial is None:
-        return RedirectResponse(url="/", status_code=303)
-    try:
-        supabase.table("parametres").update({"solde_initial": solde_initial}).eq("id", 1).execute()
-        return HTMLResponse(content=f"<script>alert('Solde initial mis à jour avec succès !'); window.location.href='/dashboard?id={user_id}';</script>")
-    except Exception as e:
-        return HTMLResponse(content=f"<script>alert('Erreur : {str(e)}'); window.location.href='/dashboard?id={user_id}';</script>")
-
-@app.api_route("/admin/saisir-cotisation", methods=["GET", "POST"], response_class=HTMLResponse)
-def saisir_cotisation(
-    user_id: Optional[int] = Form(None), adherent_id: Optional[int] = Form(None),
-    montant: Optional[float] = Form(None), periode: Optional[str] = Form(None), mode_paiement: Optional[str] = Form(None)
-):
-    if not user_id or not adherent_id:
-        return RedirectResponse(url="/", status_code=303)
-    try:
-        supabase.table("cotisations").insert({
-            "adherent_id": adherent_id, "montant": montant or 0, "periode": periode or "",
-            "mode_paiement": mode_paiement or "especes", "statut_paiement": "valide"
-        }).execute()
-        return HTMLResponse(content=f"<script>alert('Cotisation enregistrée et validée avec succès !'); window.location.href='/dashboard?id={user_id}';</script>")
-    except Exception as e:
-        return HTMLResponse(content=f"<script>alert('Erreur : {str(e)}'); window.location.href='/dashboard?id={user_id}';</script>")
-
-@app.api_route("/admin/creer-evenement", methods=["GET", "POST"], response_class=HTMLResponse)
-def creer_evenement(user_id: Optional[int] = Form(None), titre: Optional[str] = Form(None), date_reunion: Optional[str] = Form(None), description: Optional[str] = Form(None)):
-    if not user_id:
-        return RedirectResponse(url="/", status_code=303)
-    try:
-        supabase.table("evenements").insert({
-            "titre": titre or "", "date_reunion": date_reunion or "", "description": description or ""
-        }).execute()
-    except Exception:
-        pass
-    return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
-
-@app.api_route("/admin/pointer-presence", methods=["GET", "POST"], response_class=HTMLResponse)
-def pointer_presence(user_id: Optional[int] = Form(None), adherent_id: Optional[int] = Form(None), evenement_titre: Optional[str] = Form(None), date_reunion: Optional[str] = Form(None), statut_presence: Optional[str] = Form(None)):
-    if not user_id or not adherent_id:
-        return RedirectResponse(url="/", status_code=303)
-    try:
-        supabase.table("presences_association").insert({
-            "adherent_id": adherent_id, "evenement_titre": evenement_titre or "Réunion", "date_reunion": date_reunion or str(datetime.date.today()), "statut_presence": statut_presence or "Present"
-        }).execute()
-        return HTMLResponse(content=f"<script>alert('Présence enregistrée !'); window.location.href='/dashboard?id={user_id}';</script>")
-    except Exception as e:
-        return HTMLResponse(content=f"<script>alert('Erreur : {str(e)}'); window.location.href='/dashboard?id={user_id}';</script>")
-
-@app.api_route("/admin/valider-aide", methods=["GET", "POST"], response_class=HTMLResponse)
-def valider_aide(user_id: Optional[int] = Form(None), aide_id: Optional[int] = Form(None), statut_validation: Optional[str] = Form(None)):
-    if user_id and aide_id and statut_validation:
-        supabase.table("aides").update({"statut_validation": statut_validation}).eq("id", aide_id).execute()
-        return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
-    return RedirectResponse(url="/", status_code=303)
-
-@app.api_route("/admin/valider-paiement-mobile", methods=["GET", "POST"], response_class=HTMLResponse)
-def valider_paiement_mobile(user_id: Optional[int] = Form(None), paiement_id: Optional[int] = Form(None)):
-    if user_id and paiement_id:
-        supabase.table("cotisations").update({"statut_paiement": "valide"}).eq("id", paiement_id).execute()
-        return HTMLResponse(content=f"<script>alert('Paiement mobile validé avec succès ! Le reçu est désormais disponible pour le membre.'); window.location.href='/dashboard?id={user_id}';</script>")
-    return RedirectResponse(url="/", status_code=303)
-
-@app.api_route("/initier-paiement-passerelle", methods=["POST"], response_class=HTMLResponse)
-def initier_paiement_passerelle(
-    user_id: Optional[int] = Form(None), montant: Optional[float] = Form(None), 
-    periode: Optional[str] = Form(None), operateur: Optional[str] = Form(None)
-):
-    if not user_id:
-        return RedirectResponse(url="/", status_code=303)
-    return RedirectResponse(url=f"/simulation-page-paiement?user_id={user_id}&montant={montant}&periode={periode}&operateur={operateur}", status_code=status.HTTP_303_SEE_OTHER)
-
-@app.get("/simulation-page-paiement", response_class=HTMLResponse)
-def simulation_page_paiement(user_id: int, montant: float, periode: str, operateur: str):
-    return f"""
-    <!DOCTYPE html>
-    <html lang="fr">
-    <head>
-        <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Passerelle de Paiement Sécurisée - Test</title>
-        <script src="https://cdn.tailwindcss.com"></script>
-    </head>
-    <body class="bg-slate-950 text-slate-100 font-sans min-h-screen flex items-center justify-center p-4">
-        <div class="max-w-md w-auto bg-slate-900 border border-white/20 rounded-3xl p-8 shadow-2xl text-center space-y-6">
-            <div class="inline-block bg-cyan-500/20 text-cyan-300 px-4 py-1.5 rounded-full text-xs font-extrabold uppercase border border-cyan-500/30">
-                Passerelle Sandbox : {operateur}
-            </div>
-            <div>
-                <h1 class="text-xl font-black text-white">Validation du Paiement</h1>
-                <p class="text-xs text-slate-400 mt-1">Association Tinka ka Mein Haaldi fotti</p>
-            </div>
-            <div class="bg-black/40 p-4 rounded-2xl border border-white/10 space-y-2 text-sm">
-                <div class="flex justify-between"><span class="text-slate-400">Montant :</span><span class="font-bold text-emerald-400">{formater_montant(montant)} CFA</span></div>
-                <div class="flex justify-between"><span class="text-slate-400">Période :</span><span class="font-bold text-white">{periode}</span></div>
-            </div>
-            <form action="/valider-simulation-paiement" method="POST" class="space-y-3">
-                <input type="hidden" name="user_id" value="{user_id}">
-                <input type="hidden" name="montant" value="{montant}">
-                <input type="hidden" name="periode" value="{periode}">
-                <input type="hidden" name="operateur" value="{operateur}">
-                <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-emerald-600/30 transition text-sm">
-                    ✅ Simuler un Paiement Réussi
-                </button>
-                <a href="/dashboard?id={user_id}" class="block w-full bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-3 rounded-xl transition text-sm">
-                    ❌ Annuler & Retourner
-                </a>
-            </form>
-        </div>
-    </body>
-    </html>
-    """
-
-@app.api_route("/valider-simulation-paiement", methods=["POST"], response_class=HTMLResponse)
-def valider_simulation_paiement(
-    user_id: Optional[int] = Form(None), montant: Optional[float] = Form(None), 
-    periode: Optional[str] = Form(None), operateur: Optional[str] = Form(None)
-):
-    if not user_id:
-        return RedirectResponse(url="/", status_code=303)
-    try:
-        mode = f"passerelle_{str(operateur).lower()}"
-        supabase.table("cotisations").insert({
-            "adherent_id": user_id, "montant": montant or 5000, "periode": periode or str(datetime.date.today())[:7],
-            "mode_paiement": mode, "statut_paiement": "valide"
-        }).execute()
-        return HTMLResponse(content=f"<script>alert('Paiement validé avec succès par la passerelle ! Le reçu est disponible.'); window.location.href='/dashboard?id={user_id}';</script>")
-    except Exception as e:
-        return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=303)
-
-@app.api_route("/projets-form", methods=["GET", "POST"], response_class=HTMLResponse)
-@app.api_route("/projets-form/", methods=["GET", "POST"], response_class=HTMLResponse)
-def ajouter_projet(
-    user_id: Optional[int] = Form(None), titre: Optional[str] = Form(None), description: Optional[str] = Form(None), 
-    objectifs: Optional[str] = Form(None), cout: Optional[float] = Form(None),
-    chronologie: Optional[str] = Form(None), statut: Optional[str] = Form(None)
-):
-    if not user_id:
-        return RedirectResponse(url="/", status_code=303)
-    try:
-        supabase.table("projets").insert({
-            "titre": titre or "", "description": description or "", "objectifs": objectifs or "N/A",
-            "cout": cout or 0, "chronologie": chronologie or "N/A", "statut": statut or "En cours"
-        }).execute()
-    except Exception:
-        pass
-    return RedirectResponse(url=f"/dashboard?id={user_id}", status_code=status.HTTP_303_SEE_OTHER)
-
-@app.get("/adherents/export-pdf")
-def export_adherents_pdf():
-    res = supabase.table("adherents").select("*").order("nom").execute()
-    adherents = res.data or []
-    buffer = io.BytesIO()
-    p = canvas.Canvas(buffer, pagesize=letter)
-    width, height = letter
-    p.setFont("Helvetica-Bold", 14)
-    p.drawString(50, height - 40, "TINKA KA MEIN HAALDI FOTTI")
-    p.setFont("Helvetica", 9)
-    p.drawString(50, height - 55, "Annuaire Officiel des Adhérents")
-    p.line(50, height - 65, width - 50, height - 65)
-    p.setFont("Helvetica-Bold", 13)
-    p.drawString(50, height - 95, f"Liste Générale des Adhérents ({len(adherents)} membres)")
-    p.setFont("Helvetica", 10)
-    y = height - 130
-    for a in adherents:
-        p.drawString(50, y, f"- {a.get('prenom','')} {a.get('nom','')} | Secteur: {a.get('secteur','')} | Tél: {a.get('telephone','')} | Rôle: {a.get('role','')} ({a.get('statut','')})")
-        y -= 20
-        if y < 50:
-            p.showPage()
-            y = height - 50
-    p.save()
-    buffer.seek(0)
-    return StreamingResponse(buffer, media_type="application/pdf", headers={"Content-Disposition": "attachment; filename=annuaire_adherents.pdf"})
-
-@app.get("/cotisation/recu-pdf/{cotisation_id}")
-def telecharger_recu_pdf(cotisation_id: int):
-    res = supabase.table("cotisations").select("*, adherents(nom, prenom, secteur, telephone)").eq("id", cotisation_id).execute()
-    if not res.data:
-        return HTMLResponse("Reçu introuvable", status_code=404)
-    c = res.data[0]
-    if c.get('statut_paiement') != 'valide':
-        return HTMLResponse("<script>alert('Accès refusé : Ce paiement n\\'a pas encore été validé par l\\'administration.'); window.history.back();</script>", status_code=403)
-    adh = c.get('adherents', {}) or {}
-    montant_fmt = formater_montant(c.get('montant', 0))
-    buffer = io.BytesIO()
-    p = canvas.Canvas(buffer, pagesize=letter)
-    width, height = letter
-    p.setFont("Helvetica-Bold", 16)
-    p.drawString(50, height - 50, "TINKA KA MEIN HAALDI FOTTI")
-    p.setFont("Helvetica", 10)
-    p.drawString(50, height - 68, "Reçu Officiel de Paiement de Cotisation")
-    p.line(50, height - 80, width - 50, height - 80)
-    p.setFont("Helvetica-Bold", 12)
-    p.drawString(50, height - 120, f"Reçu N° : TK-{c['id']:04d}")
-    p.setFont("Helvetica", 11)
-    p.drawString(50, height - 145, f"Date de Paiement : {formater_date(c.get('date_paiement',''))}")
-    p.drawString(50, height - 170, f"Membre : {adh.get('prenom','')} {adh.get('nom','')}")
-    p.drawString(50, height - 195, f"Secteur : {adh.get('secteur','')}")
-    p.drawString(50, height - 220, f"Téléphone : {adh.get('telephone','')}")
-    p.rect(50, height - 310, width - 100, 60, stroke=1, fill=0)
-    p.setFont("Helvetica-Bold", 14)
-    p.drawString(70, height - 265, f"Montant Versé : {montant_fmt} CFA")
-    p.setFont("Helvetica", 11)
-    p.drawString(70, height - 285, f"Période couverte : {c.get('periode','')} | Mode : {c.get('mode_paiement','')}")
-    p.save()
-    buffer.seek(0)
-    return StreamingResponse(buffer, media_type="application/pdf", headers={"Content-Disposition": f"attachment; filename=recu_cotisation_{c['id']}.pdf"})
-
 @app.api_route("/dashboard", methods=["GET", "POST"], response_class=HTMLResponse)
 def afficher_dashboard(id: Optional[int] = Query(None)):
     if not id:
@@ -637,7 +184,7 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
                 actions_aide = f"<span class='text-xs font-bold py-1 px-3 rounded-full bg-white/10 text-slate-300 uppercase'>{st_aide}</span>"
             aides_admin_html += f"<li class='py-3 border-b border-white/5 flex justify-between items-center text-sm aide-item' data-motif='{str(ai.get('motif','')).lower()}'><div><b class='text-white'>{adh_aide.get('prenom','')} {adh_aide.get('nom','')}</b> — <span class='text-slate-300'>{ai.get('motif','')}</span> <span class='text-amber-400 font-bold'>({formater_montant(ai.get('montant_demande',0))} CFA)</span></div><div>{actions_aide}</div></li>"
 
-        options_adherents_select = "".join([f"<option value='{a['id']}' class='bg-slate-900'>{a.get('prenom','')} {a.get('nom','')} ({a.get('secteur','')})</option>" for a in all_actifs])
+        options_adherents_select = "".join([f"<option value='{a['id']}' class='bg-slate-900 adherent-option' data-text='{str(a.get('prenom','')).lower()} {str(a.get('nom','')).lower()} {str(a.get('secteur','')).lower()}'>{a.get('prenom','')} {a.get('nom','')} ({a.get('secteur','')})</option>" for a in all_actifs])
         options_evenements_select = "".join([f"<option value='{e.get('titre','')}' data-date='{e.get('date_reunion','')}' class='bg-slate-900'>{e.get('titre','')} ({formater_date(e.get('date_reunion',''))})</option>" for e in all_evenements])
 
         tresorerie_box_html = f"""
@@ -655,9 +202,16 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
 
                 <div class="bg-white/5 p-5 rounded-2xl border border-white/10 mb-6 backdrop-blur-md">
                     <h3 class="text-xs font-extrabold text-emerald-300 mb-3 uppercase tracking-wider">➕ Saisie Manuelle d'une Cotisation Membre</h3>
+                    
+                    <!-- Barre de recherche pour filtrer les membres du menu déroulant -->
+                    <div class="mb-3">
+                        <label class="block text-xs font-bold text-slate-300 mb-1">🔍 Rechercher un membre pour la cotisation</label>
+                        <input type="text" id="search-select-membre" onkeyup="filterAdherentSelect()" placeholder="Tapez un nom, prénom ou secteur..." class="w-full p-3 text-sm bg-slate-900 border border-white/20 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-400 shadow-sm">
+                    </div>
+
                     <form action="/admin/saisir-cotisation" method="POST" class="grid grid-cols-1 sm:grid-cols-4 gap-3">
                         <input type="hidden" name="user_id" value="{user['id']}">
-                        <select name="adherent_id" required class="p-3 text-sm border border-white/20 rounded-xl bg-slate-900 text-white font-semibold shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-400">
+                        <select name="adherent_id" id="select-adherent-cotisation" required class="p-3 text-sm border border-white/20 rounded-xl bg-slate-900 text-white font-semibold shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-400">
                             <option value="">-- Choisir un membre --</option>
                             {options_adherents_select}
                         </select>
@@ -938,6 +492,20 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
                 }}
                 function openModal(id) {{ let m = document.getElementById('modal-' + id); if(m) m.classList.remove('hidden'); }}
                 function closeModal(id) {{ let m = document.getElementById('modal-' + id); if(m) m.classList.add('hidden'); }}
+                
+                function filterAdherentSelect() {{
+                    let input = document.getElementById('search-select-membre');
+                    if (!input) return;
+                    let val = input.value.toLowerCase();
+                    let select = document.getElementById('select-adherent-cotisation');
+                    if (!select) return;
+                    let options = select.getElementsByClassName('adherent-option');
+                    for (let opt of options) {{
+                        let text = opt.getAttribute('data-text');
+                        opt.style.display = text.includes(val) ? "" : "none";
+                    }}
+                }}
+
                 function filterAnnuaire() {{
                     let input = document.getElementById('search-annuaire');
                     if (!input) return;
@@ -1034,7 +602,3 @@ def afficher_dashboard(id: Optional[int] = Query(None)):
         """
     except Exception as e:
         return HTMLResponse(content=f"<h3>Erreur critique sur le Dashboard :</h3><p>{str(e)}</p><a href='/'>Retour</a>", status_code=500)
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("app_asso:app", host="127.0.0.1", port=8000, reload=True)
