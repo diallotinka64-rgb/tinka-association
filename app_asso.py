@@ -1244,6 +1244,32 @@ SCRIPTS = """
     if (e.key === 'Escape') fermerPhoto();
   });
 
+  // ---- Application installable (PWA) ----
+  let invitationInstall = null;
+  const estInstallee = () => window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  const estIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  function montrerBoutonsInstall(oui) {
+    document.querySelectorAll('.btn-installer').forEach(b => b.classList.toggle('hidden', !oui));
+  }
+  window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); invitationInstall = e; montrerBoutonsInstall(true); });
+  window.addEventListener('appinstalled', () => { invitationInstall = null; montrerBoutonsInstall(false); });
+  async function installerAppli() {
+    if (invitationInstall) {
+      invitationInstall.prompt();
+      const choix = await invitationInstall.userChoice;
+      if (choix.outcome === 'accepted') montrerBoutonsInstall(false);
+      invitationInstall = null;
+    } else if (estIOS()) {
+      ouvrirModale('modale-ios');
+    } else {
+      alert("Ouvrez le menu ⋮ du navigateur puis choisissez « Installer l'application » ou « Ajouter à l'écran d'accueil ».");
+    }
+  }
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
+  }
+  document.addEventListener('DOMContentLoaded', () => { if (!estInstallee() && estIOS()) montrerBoutonsInstall(true); });
+
   let lecteur = null;
   function demarrerScan() {
     const zone = document.getElementById('lecteur-qr'), res = document.getElementById('resultat-scan');
@@ -1413,6 +1439,34 @@ def section_galerie_admin(user, d) -> str:
     </div>"""
 
 
+HEAD_PWA = """<meta name="theme-color" content="#064e3b">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icone-192.png">
+  <link rel="apple-touch-icon" href="/icone-180.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Tinka Asso">"""
+
+BOUTON_INSTALLER = ('<button type="button" class="btn-installer hidden btn btn-vert btn-xs animate-pulse" onclick="installerAppli()" '
+                    'title="Installer l\'application sur ce téléphone">📲<span>Installer l\'appli</span></button>')
+
+MODALE_IOS = """
+  <div id="modale-ios" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 hidden items-end sm:items-center justify-center p-4"
+       onclick="if(event.target===this) fermerModale('modale-ios')">
+    <div class="bg-slate-900 border border-white/20 rounded-3xl max-w-sm w-full p-6 shadow-2xl text-sm space-y-3">
+      <div class="flex justify-between items-center"><h3 class="font-bold text-emerald-300">📲 Installer sur iPhone / iPad</h3>
+        <button type="button" onclick="fermerModale('modale-ios')" class="text-slate-400 text-xl" aria-label="Fermer">✕</button></div>
+      <ol class="space-y-2 text-slate-200 list-decimal pl-5">
+        <li>Ouvrez cette page dans <b>Safari</b>.</li>
+        <li>Touchez le bouton <b>Partager</b> <span class="inline-block border border-white/40 rounded px-1">⬆︎</span> en bas de l'écran.</li>
+        <li>Choisissez <b>« Sur l'écran d'accueil »</b>, puis <b>Ajouter</b>.</li>
+      </ol>
+      <p class="text-[11px] text-slate-400">L'icône Tinka apparaît alors sur votre écran d'accueil, comme une application.</p>
+    </div>
+  </div>"""
+
+
 def modale_mdp(user) -> str:
     return f"""
     <div id="modale-mdp" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 hidden items-center justify-center p-4"
@@ -1438,7 +1492,7 @@ def page(user, contenu, onglets_html="", msg=None) -> str:
 <html lang="fr">
 <head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#022c22">
+  {HEAD_PWA}
   <title>Tableau de bord — Tinka Association</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" defer></script>
@@ -1455,6 +1509,7 @@ def page(user, contenu, onglets_html="", msg=None) -> str:
           <p class="text-[11px] text-emerald-400 uppercase font-bold tracking-widest">{h(user.get('role'))} · Tinka Association</p></div>
       </div>
       <div class="flex gap-2">
+        {BOUTON_INSTALLER}
         <button type="button" class="btn btn-gris btn-xs" onclick="ouvrirModale('modale-mdp')" title="Changer mon mot de passe">🔑<span class="hidden sm:inline">Mot de passe</span></button>
         <a href="/deconnexion" class="btn btn-gris btn-xs">⏻<span class="hidden sm:inline">Déconnexion</span></a>
       </div>
@@ -1464,6 +1519,7 @@ def page(user, contenu, onglets_html="", msg=None) -> str:
   </div>
   {modale_edition(user) if est_tresorier(user) else ""}
   {modale_mdp(user)}
+  {MODALE_IOS}
 </body>
 </html>"""
 
@@ -1523,7 +1579,7 @@ def afficher_portail(request: Request):
 <html lang="fr">
 <head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#022c22">
+  {HEAD_PWA}
   <title>{h(NOM_ASSO)} — Portail</title>
   <script src="https://cdn.tailwindcss.com"></script>
   {STYLES}
@@ -1534,6 +1590,7 @@ def afficher_portail(request: Request):
   <main class="max-w-md mx-auto space-y-4">
     <div class="text-center">
       <span class="badge badge-vert">Portail officiel</span>
+      <div class="mt-3">{BOUTON_INSTALLER}</div>
       <h1 class="text-2xl font-black text-white tracking-tight mt-3">{h(NOM_ASSO)}</h1>
       <p class="text-xs text-slate-300 mt-1">Gestion administrative, financière & Daara</p>
     </div>
@@ -1579,6 +1636,7 @@ def afficher_portail(request: Request):
       <p class="text-[11px] text-slate-400 mt-1">Scannez pour partager le site</p>
     </div>
   </main>
+  {MODALE_IOS}
   <script>
     document.querySelectorAll('.onglet-portail').forEach(b => b.addEventListener('click', () => {{
       document.querySelectorAll('.onglet-portail').forEach(x => {{
@@ -1925,6 +1983,7 @@ def simulation_page_paiement(request: Request):
 <html lang="fr"><head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Paiement {h(nom_op)} — Test</title>
+  {HEAD_PWA}
   <script src="https://cdn.tailwindcss.com"></script>{STYLES}{SCRIPTS}
 </head>
 <body class="bg-slate-950 text-slate-100 font-sans min-h-screen flex items-center justify-center p-4">
@@ -2208,6 +2267,115 @@ def galerie_deplacer(request: Request, photo_id: int = Form(...), sens: int = Fo
         if int(p.get("ordre") or 0) != i:
             supabase.table("galerie").update({"ordre": i}).eq("id", p["id"]).execute()
     return retour("tab-galerie", "Ordre mis à jour ✓", request=request)
+
+
+# =====================================================================
+#  APPLICATION INSTALLABLE (PWA) : manifeste, icônes, service worker
+# =====================================================================
+from functools import lru_cache
+from fastapi.responses import JSONResponse, Response
+
+
+@lru_cache(maxsize=8)
+def dessiner_icone(taille: int) -> bytes:
+    """Icône dessinée à la volée (pas de fichier à héberger) : « T » blanc sur fond vert, toit doré."""
+    from PIL import Image, ImageDraw
+    t = taille
+    img = Image.new("RGB", (t, t))
+    d = ImageDraw.Draw(img)
+    for y in range(t):  # dégradé vert foncé -> émeraude
+        r = y / t
+        d.line([(0, y), (t, y)], fill=(int(2 + 4 * r), int(44 + 76 * r), int(34 + 53 * r)))
+    c = t / 2
+    # Toit doré (maison commune)
+    d.polygon([(c - 0.30 * t, 0.40 * t), (c, 0.20 * t), (c + 0.30 * t, 0.40 * t), (c + 0.24 * t, 0.40 * t),
+               (c, 0.27 * t), (c - 0.24 * t, 0.40 * t)], fill=(251, 191, 36))
+    # Lettre T
+    d.rounded_rectangle([c - 0.22 * t, 0.44 * t, c + 0.22 * t, 0.53 * t], radius=int(0.02 * t), fill="white")
+    d.rounded_rectangle([c - 0.05 * t, 0.44 * t, c + 0.05 * t, 0.80 * t], radius=int(0.02 * t), fill="white")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG", optimize=True)
+    return buf.getvalue()
+
+
+@app.get("/icone-{taille}.png")
+def icone(taille: int):
+    if taille not in (180, 192, 512):
+        taille = 192
+    return Response(dessiner_icone(taille), media_type="image/png",
+                    headers={"Cache-Control": "public, max-age=604800"})
+
+
+@app.get("/manifest.webmanifest")
+def manifeste():
+    return JSONResponse({
+        "id": "/",
+        "name": NOM_ASSO,
+        "short_name": "Tinka Asso",
+        "description": "Cotisations, présences, aides et projets de l'association.",
+        "lang": "fr",
+        "start_url": "/?source=appli",
+        "scope": "/",
+        "display": "standalone",
+        "orientation": "portrait",
+        "background_color": "#022c22",
+        "theme_color": "#064e3b",
+        "icons": [
+            {"src": "/icone-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+            {"src": "/icone-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+            {"src": "/icone-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"},
+        ],
+        "shortcuts": [{"name": "Mon tableau de bord", "url": "/dashboard", "icons": [{"src": "/icone-192.png", "sizes": "192x192"}]}],
+    }, media_type="application/manifest+json")
+
+
+SERVICE_WORKER = """
+const CACHE = 'tinka-asso-v1';
+const A_GARDER = ['/hors-ligne', '/icone-192.png', '/icone-512.png', '/manifest.webmanifest'];
+self.addEventListener('install', e => {
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(A_GARDER)).then(() => self.skipWaiting()));
+});
+self.addEventListener('activate', e => {
+  e.waitUntil(caches.keys().then(cles => Promise.all(cles.filter(k => k !== CACHE).map(k => caches.delete(k))))
+    .then(() => self.clients.claim()));
+});
+self.addEventListener('fetch', e => {
+  const req = e.request;
+  if (req.method !== 'GET') return;
+  // Pages : toujours les données à jour ; page « hors ligne » si pas de réseau
+  if (req.mode === 'navigate') {
+    e.respondWith(fetch(req).catch(() => caches.match('/hors-ligne')));
+    return;
+  }
+  // Icônes, styles, scripts externes : cache d'abord pour un démarrage rapide
+  const url = new URL(req.url);
+  if (A_GARDER.includes(url.pathname) || url.hostname.includes('cdn.tailwindcss.com') || url.hostname.includes('unpkg.com')) {
+    e.respondWith(caches.match(req).then(r => r || fetch(req).then(rep => {
+      const copie = rep.clone(); caches.open(CACHE).then(c => c.put(req, copie)); return rep;
+    })));
+  }
+});
+"""
+
+
+@app.get("/sw.js")
+def service_worker():
+    return Response(SERVICE_WORKER, media_type="application/javascript",
+                    headers={"Cache-Control": "no-cache", "Service-Worker-Allowed": "/"})
+
+
+@app.get("/hors-ligne", response_class=HTMLResponse)
+def hors_ligne():
+    return f"""<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Hors connexion — Tinka</title>
+<style>body{{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:system-ui,sans-serif;
+background:linear-gradient(160deg,#020617,#022c22 60%,#134e4a);color:#e2e8f0;text-align:center;padding:24px}}
+.c{{max-width:340px}} img{{width:88px;height:88px;border-radius:22px}} h1{{font-size:20px;margin:18px 0 8px}}
+p{{color:#94a3b8;font-size:14px;line-height:1.5}} button{{margin-top:18px;background:#059669;color:#fff;border:0;
+padding:12px 22px;border-radius:14px;font-weight:700;font-size:15px}}</style></head>
+<body><div class="c"><img src="/icone-192.png" alt=""><h1>Pas de connexion Internet</h1>
+<p>{h(NOM_ASSO)} a besoin d'Internet pour afficher vos cotisations à jour. Vérifiez votre réseau puis réessayez.</p>
+<button onclick="location.reload()">🔄 Réessayer</button></div></body></html>"""
 
 
 if __name__ == "__main__":
